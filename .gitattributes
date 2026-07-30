@@ -1,0 +1,12 @@
+# ---------------------------------------------------------------------------
+# Git 屬性設定 — 換行結尾（EOL）正規化
+# 負責人：LeeFreedom（秉迅資訊）｜ 建立：2026-07-29
+# ---------------------------------------------------------------------------
+# 本 repo 開發端為 Windows 且 core.autocrlf=true（實測本 repo 為 true）。
+# 在無此設定的情況下，checkout 會把 shell script 轉成 CRLF 行尾，使腳本在
+# Linux 上以 `bash\r: No such file or directory` 或 `bad interpreter: ^M`
+# 失敗——而本 repo 的產出正是要拿到 Proxmox VE / Debian 主機上執行的。
+#
+# 此外 CRLF 會讓字串尾帶 \r，導致 sysfs 讀值比對、介面名判定等靜默錯誤，
+# 這類錯誤不會讓腳本中止，只會讓判定結果無聲地變錯。
+*.sh text eol=lf
