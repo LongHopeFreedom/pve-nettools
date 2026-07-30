@@ -8,8 +8,8 @@
 #       輸出完整報告排進定期巡檢。
 #
 # 負責人：LeeFreedom（秉迅資訊 BingXun InfoTech）
-# 建立日期：2026-07-29 ｜ 變動日期：2026-07-29 22:28
-# 版本：v02.002.000
+# 建立日期：2026-07-29 ｜ 變動日期：2026-07-30 20:32
+# 版本：v02.002.001
 #       ★本檔頭之版本字樣為【狀態型宣稱】，指向現行版。改版時共三處 MUST 同步：
 #         本行、下方的 VERSION 變數、CHANGELOG.md 最上方的版本區塊。
 #         此三處是否一致由 --self-test 的第 14 段實際比對，漂移會讓自檢變紅。
@@ -74,7 +74,7 @@
 
 set -uo pipefail
 
-VERSION="02.002.000"
+VERSION="02.002.001"
 SAMPLE_SECONDS="${SAMPLE_SECONDS:-3}"
 BLINK_SECONDS="${BLINK_SECONDS:-10}"
 REPORT_DIR="${REPORT_DIR:-/root}"
@@ -2001,6 +2001,25 @@ render_persistent_config() {
 
 # ── LED 定位（互動專用）───────────────────────────────────────────────────
 
+# LED 定位的網卡選單。
+#
+# [CHANGE] v02.002.001：Link 欄補上顏色。
+#   舊版直接印 get_link_plain（無色版），而其他所有表格都是 padc 搭 link_color 上色，
+#   於是唯獨這一頁的「已接線／未接線」是白的——實地回報才發現。
+#   抽成獨立函式是為了讓自檢測得到：identify_nic_led 本身要 read 使用者輸入，
+#   自檢無法直接跑它，「有沒有上色」這件事就永遠沒有人守。
+render_nic_pick_list() {
+    local i nic
+    for i in "${!PHYSICAL_NICS[@]}"; do
+        nic="${PHYSICAL_NICS[$i]}"
+        printf "  %2d) %s MAC=%s Link=%s%s%s\n" \
+            "$((i + 1))" \
+            "$(pad "$nic" 16)" \
+            "$(pad "$(get_mac "$nic")" 19)" \
+            "$(link_color "$nic")" "$(get_link_plain "$nic")" "$NC"
+    done
+}
+
 identify_nic_led() {
     clear_screen
     print_header
@@ -2021,12 +2040,7 @@ identify_nic_led() {
 
     section "選擇要定位的實體網卡"
 
-    local i nic choice
-    for i in "${!PHYSICAL_NICS[@]}"; do
-        nic="${PHYSICAL_NICS[$i]}"
-        printf "  %2d) %s MAC=%s Link=%s\n" \
-            "$((i + 1))" "$(pad "$nic" 16)" "$(pad "$(get_mac "$nic")" 19)" "$(get_link_plain "$nic")"
-    done
+    render_nic_pick_list
 
     echo "   0) 返回"
     echo
@@ -2628,7 +2642,49 @@ EOF
     if [[ -n "$saved_tw" ]]; then TERM_WIDTH="$saved_tw"; else TERM_WIDTH=""; fi
 
     echo
-    subsection "16. 分頁輸出（pager）"
+    subsection "16. LED 定位選單的 Link 著色"
+
+    # 實地回報：LED 定位那一頁的 Link 是白的，其他表格都有顏色。
+    # 這一段守的是「顏色有沒有真的送出去」——用假 sysfs 造一張已接線與一張未接線
+    # 的網卡，直接跑選單產生函式並檢查 ANSI 碼。
+    local td_l saved_root_l saved_color_l
+    td_l=$(mktemp -d)
+    local n st
+    for n in up0 down0; do
+        mkdir -p "$td_l/net/$n/statistics" "$td_l/net/$n/device"
+        printf '00:11:22:33:44:55\n' > "$td_l/net/$n/address"
+        printf '1500\n' > "$td_l/net/$n/mtu"
+        printf '0\n' > "$td_l/net/$n/statistics/rx_bytes"
+    done
+    printf '1\n' > "$td_l/net/up0/carrier";   printf 'up\n'   > "$td_l/net/up0/operstate"
+    printf '0\n' > "$td_l/net/down0/carrier"; printf 'down\n' > "$td_l/net/down0/operstate"
+
+    saved_root_l="$SYS_NET_ROOT"; saved_color_l="$USE_COLOR"
+    SYS_NET_ROOT="$td_l/net"
+
+    # 著色版與無色版都要在同一組 fixture 下取，兩者一起比才有意義
+    local picklist_c picklist_p
+    USE_COLOR=1; setup_colors
+    refresh_physical_nics
+    picklist_c=$(render_nic_pick_list)
+    USE_COLOR=0; setup_colors
+    picklist_p=$(render_nic_pick_list)
+
+    SYS_NET_ROOT="$saved_root_l"
+    USE_COLOR="$saved_color_l"; setup_colors
+    rm -rf "$td_l"
+    refresh_physical_nics
+
+    check "選單列出兩張網卡"           "2" "$(wc -l <<< "$picklist_c" | tr -d ' ')"
+    check "已接線那列帶綠色碼"         "1" "$(grep -c $'\033\[0;32m已接線' <<< "$picklist_c")"
+    check "未接線那列帶紅色碼"         "1" "$(grep -c $'\033\[0;31m未接線' <<< "$picklist_c")"
+    check "每列都有色碼重置"           "2" "$(grep -c $'\033\[0m' <<< "$picklist_c")"
+    # 陰性對照：同一組 fixture 在無色模式下不可帶任何 ANSI 碼——否則報告檔會被汙染
+    check "  └ 無色模式下 0 個 ANSI 碼" "0" "$(grep -c $'\033' <<< "$picklist_p")"
+    check "  └ 無色模式仍列出兩張"     "2" "$(wc -l <<< "$picklist_p" | tr -d ' ')"
+
+    echo
+    subsection "17. 分頁輸出（pager）"
 
     local saved_np="${NO_PAGER:-}"
 
@@ -2649,7 +2705,7 @@ EOF
     if [[ -n "$saved_np" ]]; then NO_PAGER="$saved_np"; else NO_PAGER=""; fi
 
     echo
-    subsection "17. VLAN 清單壓縮／折行／範圍判斷"
+    subsection "18. VLAN 清單壓縮／折行／範圍判斷"
 
     # 起因是實地回報「bridge-vids 2-4090 時前面的 VLAN 數字看不到」。根因是某個
     # port 的 VLAN 被串成 23432 字元的單行，在終端折成約 300 行把前面推出畫面。
