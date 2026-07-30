@@ -21,7 +21,7 @@ Proxmox VE 網路盤查工具。
 >
 > ⚠ **Not yet verified on real Proxmox VE hardware** — see 「驗證限度」 below.
 
-授權：MIT ・ 作者：LeeFreedom（秉迅資訊）
+授權：MIT ・ 作者：LeeFreedom（秉迅資訊 BingXun InfoTech）
 
 | 檔案 | 內容 |
 |---|---|

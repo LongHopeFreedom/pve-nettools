@@ -1,6 +1,6 @@
 # 變更紀錄 — pve-network-audit.sh
 
-負責人：LeeFreedom（秉迅資訊）
+負責人：LeeFreedom（秉迅資訊 BingXun InfoTech）
 
 版本號採 `XX.XXX.XXX` 慣例。腳本的 `--version` 輸出即為現行版，與本檔最上方的版本
 必須一致；改版時兩處 MUST 同步。
