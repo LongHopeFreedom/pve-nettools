@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.004.000**.
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.005.000**.
 
 Repository: `github.com/LongHopeFreedom/pve-nettools`
 
@@ -25,7 +25,7 @@ License: MIT — see `LICENSE`
 
 Python v03 requires Python 3.9 or newer and uses only the standard library: no pip installation or virtual environment is needed.
 
-The public repository currently still ships the Bash version; Python v03 has not yet been released there. The commands below apply after the v03 files are published:
+Python v03 and the Bash v02 implementation both live in this repository and are ready to use:
 
 ```bash
 git clone https://github.com/LongHopeFreedom/pve-nettools.git /opt/pve-nettools
@@ -159,9 +159,22 @@ Run it after changing decision logic. A non-zero return code indicates a failed 
 
 ## Verification limits
 
-**Python v03 has not yet been verified on a real Proxmox VE host.** Only menu item 1 has been confirmed to match the Bash output. Items 2–24—including all new items 21–24—and every other Python execution path remain unverified on real hardware.
+**Python v03 has been run on a real Proxmox VE host** (PVE 9.2.5, kernel 7.0.6-2-pve, 2026-08-03). Read the coverage and the limits below together—reading only one half gives the wrong impression.
 
-For the first run: execute `--self-test` → inspect each menu item while comparing it with raw `ip` / `ethtool` output → schedule recurring reports only after the results are confirmed.
+**Verified coverage:**
+
+- The full `--report` was produced on real hardware; all 20 sections emitted output
+- Physical NIC fields carried real values (speed, duplex, MTU, media, driver, PCI address, firmware version, auto-negotiation) and matched raw `ethtool` output
+- All 56 built-in self-test checks passed; all 686 tests passed on that host (3 of them, covering symlink protection, can only run on Linux)
+- The VM/CT interface mapping was produced in an environment with a dozen or so live guests
+
+**Not covered** (that host has no such hardware, or never entered these states):
+
+- **Bond**, **SFP/QSFP modules**, and **VLAN sub-interfaces**: the host had none, so only the "correctly reports no data" path was exercised—not the rendering of actual data
+- **ethtool failure messages**: all three ethtool queries succeeded, so the four cause-specific messages and the "the following fields will show N/A" line never appeared
+- **Multi-node clusters** and **hosts with several physical NICs**
+
+For the first run in your own environment: execute `--self-test` → inspect each menu item while comparing it with raw `ip` / `ethtool` output → schedule recurring reports only after the results are confirmed.
 
 ## Interpretation notes
 

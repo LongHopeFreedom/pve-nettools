@@ -52,35 +52,52 @@ def main(argv, env=None, prog="pve-network-audit", stdout_fn=None,
     choose_lang_fn = (menu.choose_language if choose_lang_fn is None
                       else choose_lang_fn)
     set_lang(env=env)
-    option = argv[0] if argv else None
-    if option in ("--help", "-h"):
-        _write_lines(usage_lines(prog), stdout_fn)
-        return 0
-    if option in ("--version", "-V"):
-        stdout_fn(__version__ + "\n")
-        return 0
-    if option == "--self-test":
-        results, summary = checks_fn()
-        _write_lines(format_fn(results, summary), stdout_fn)
-        return selftest_exit_fn(summary)
-    if option == "--report":
-        palette = app.build_context(env=env).palette
-        if not require_root(euid_fn=euid_fn, stderr_fn=stderr_fn,
-                            palette=palette):
-            return 1
-        readers = readers_factory(env=env)
-        _path, code = report_fn(readers, env=env, quiet=True)
-        return code
-    if option is None:
-        ctx = app.build_context(env=env)
-        if not require_root(euid_fn=euid_fn, stderr_fn=stderr_fn,
-                            palette=ctx.palette):
-            return 1
-        # ★ MUST 只在這個分支問語系。--report／--self-test 都不能停下來等人：
-        #   前者是設計來排 cron 的，半夜掛住不會有任何錯誤訊息。
-        choose_lang_fn()
-        readers = readers_factory(env=env)
-        return menu_fn(readers, ctx, env=env)
-    stderr_fn(t("cli.unknown_option", option=option) + "\n\n")
-    _write_lines(usage_lines(prog), stderr_fn)
-    return 2
+    # [CHANGE] 2026-08-03：Ctrl-C **不是程式錯誤**，不該噴 traceback。
+    #
+    # ★ 真機實測踩到：在 pager 的 `(END)` 提示按 Ctrl-C，畫面留下九層 traceback，
+    #   最底下是 `os.waitpid` ——讀的人只會覺得工具壞了。而這支工具從頭到尾都是
+    #   互動式的（選單等輸入、pager 等翻頁、LED 定位阻塞十秒），**Ctrl-C 是預期
+    #   中的操作，不是例外路徑**。
+    # ★ 實測全套件對 `KeyboardInterrupt` 的命中數是 **0**（陽性對照：
+    #   `BrokenPipeError` 有 3 處），三層——入口腳本／本函式／pager——都沒有攔。
+    # ★ 攔在這裡而不是入口腳本：入口腳本無副檔名，`import` 不進來，寫在那裡的
+    #   判斷沒有任何測試涵蓋得到（見該檔檔頭）。
+    # ★ 離開碼 130 是 shell 慣例（128 + SIGINT 的 2）。回 0 會讓排程把「使用者中斷」
+    #   當成正常完成，回 1 則與「真的失敗」混在一起。
+    try:
+        option = argv[0] if argv else None
+        if option in ("--help", "-h"):
+            _write_lines(usage_lines(prog), stdout_fn)
+            return 0
+        if option in ("--version", "-V"):
+            stdout_fn(__version__ + "\n")
+            return 0
+        if option == "--self-test":
+            results, summary = checks_fn()
+            _write_lines(format_fn(results, summary), stdout_fn)
+            return selftest_exit_fn(summary)
+        if option == "--report":
+            palette = app.build_context(env=env).palette
+            if not require_root(euid_fn=euid_fn, stderr_fn=stderr_fn,
+                                palette=palette):
+                return 1
+            readers = readers_factory(env=env)
+            _path, code = report_fn(readers, env=env, quiet=True)
+            return code
+        if option is None:
+            ctx = app.build_context(env=env)
+            if not require_root(euid_fn=euid_fn, stderr_fn=stderr_fn,
+                                palette=ctx.palette):
+                return 1
+            # ★ MUST 只在這個分支問語系。--report／--self-test 都不能停下來等人：
+            #   前者是設計來排 cron 的，半夜掛住不會有任何錯誤訊息。
+            choose_lang_fn()
+            readers = readers_factory(env=env)
+            return menu_fn(readers, ctx, env=env)
+        stderr_fn(t("cli.unknown_option", option=option) + "\n\n")
+        _write_lines(usage_lines(prog), stderr_fn)
+        return 2
+    except KeyboardInterrupt:
+        # 前導換行：Ctrl-C 的 `^C` 會留在游標所在那一行。
+        stderr_fn("\n" + t("cli.interrupted") + "\n")
+        return 130

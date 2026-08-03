@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.004.000**。
+Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.005.000**。
 
 儲存庫：`github.com/LongHopeFreedom/pve-nettools`
 
@@ -25,7 +25,7 @@ Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、�
 
 Python v03 需要 Python 3.9 以上版本，而且只使用標準函式庫，不需 pip 或 venv。
 
-公開儲存庫目前仍只提供 Bash 版，Python v03 尚未在該處發布。下列指令適用於 v03 檔案發布後：
+Python v03 與 Bash v02 並存於本儲存庫，兩者都可直接取用：
 
 ```bash
 git clone https://github.com/LongHopeFreedom/pve-nettools.git /opt/pve-nettools
@@ -159,9 +159,22 @@ install -d -m 0700 /var/log/pve-audit
 
 ### ⚠ 驗證限度
 
-**Python v03 尚未在真正的 Proxmox VE 主機上驗證。** 目前只有選單項目 1 已確認與 Bash 輸出一致；項目 2–24（包括 v03 新增的 21–24）及其他 Python 執行路徑都尚未在真機驗證。
+**Python v03 已在實際的 Proxmox VE 主機上執行過**（PVE 9.2.5、kernel 7.0.6-2-pve，2026-08-03）。下面的涵蓋範圍與限度請一起讀——只讀其中一半會得到錯誤的印象。
 
-首次執行請依序：`--self-test` → 在選單逐項檢視並與原始 `ip` / `ethtool` 輸出比較 → 確認無誤後才排進定期巡檢。
+**驗證涵蓋**：
+
+- `--report` 完整報告在真機產出，20 個區段全部有輸出
+- 實體網卡各欄位取到真實數值（速率、Duplex、MTU、媒介、驅動、PCI 位址、韌體版本、自動協商），與 `ethtool` 原始輸出一致
+- 內建自檢 56 項全數通過；完整測試 686 條在該主機上全數通過（其中 3 條與符號連結防護有關的測試只有 Linux 跑得到）
+- VM/CT 網卡對應在有十餘個實際 guest 的環境下產出
+
+**未涵蓋**（那台主機沒有這些設備，或沒有進入這些狀態）：
+
+- **Bond**、**SFP/QSFP 模組**、**VLAN 子介面**：主機上都沒有，因此只驗到「正確顯示沒有資料」，沒有驗到有資料時的呈現是否正確
+- **ethtool 查詢失敗時的訊息**：三道 ethtool 查詢全部成功，四句成因訊息與「以下欄位將顯示 N/A」那一行都沒有機會出現
+- **多節點叢集**與**多張實體網卡**的情境
+
+首次在自己的環境執行時，仍請依序：`--self-test` → 在選單逐項檢視並與原始 `ip` / `ethtool` 輸出比較 → 確認無誤後才排進定期巡檢。
 
 ## 判讀提示
 

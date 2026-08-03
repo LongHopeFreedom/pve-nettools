@@ -113,6 +113,9 @@ MESSAGES = {
 
         # ── CLI ──
         "cli.unknown_option": "未知選項：{option}",
+        # [CHANGE] 2026-08-03：Ctrl-C 的離開訊息。這支工具全程互動（選單等輸入、
+        #          pager 等翻頁、LED 定位阻塞十秒），中斷是預期操作不是例外路徑。
+        "cli.interrupted": "已中斷。",
         "cli.usage_synopsis": "用法：\n  {prog}                 啟動互動選單\n  {prog} --report        非互動，直接輸出完整盤查報告（適合排 cron）\n  {prog} --self-test     只跑內建自檢，不讀取系統網路狀態\n  {prog} --version       顯示版本\n  {prog} --help          顯示本說明",
         # [CHANGE] 2026-08-02 待辦 #24：本段原本承諾了 LIST_LIMIT（「清單顯示上限」），
         #          但全套件零實作——使用者設了不會生效也不會報錯，是對使用者說謊，
@@ -605,6 +608,8 @@ MESSAGES = {
 
         # ── CLI ──
         "cli.unknown_option": "Unknown option: {option}",
+        # [CHANGE] 2026-08-03：見 zh-TW 段同位置的說明。
+        "cli.interrupted": "Interrupted.",
         "cli.usage_synopsis": "Usage:\n  {prog}                 Start the interactive menu\n  {prog} --report        Write a complete report non-interactively (for cron)\n  {prog} --self-test     Run only the built-in self-test; do not read network state\n  {prog} --version       Show the version\n  {prog} --help          Show this help",
         # [CHANGE] 2026-08-02 待辦 #24：與 zh-TW 段同一批修正（移除未實作的 LIST_LIMIT、
         #          補上四個有實作卻沒列的變數）。兩語 MUST 列出完全相同的變數集合，

@@ -73,6 +73,18 @@ def page_output(lines, env=None, isatty_fn=None, which_fn=None,
         process.stdin.write(text)
         process.stdin.close()
         process.wait()
+    # [CHANGE] 2026-08-03：Ctrl-C 時 SIGINT 送給的是**整個前景群組**，pager 自己也
+    #   收到了。這裡再 wait 一次，讓它把終端收拾乾淨——less 要還原 alternate screen
+    #   並復原 termios 設定；直接往上拋會讓終端停在殘缺畫面，使用者得自己打 reset。
+    # ★ 收拾完仍 re-raise：決定「怎麼向使用者交代中斷」是 cli.main() 的職責，不是
+    #   pager 的。兩層各做各的，才不會兩個地方都印一次訊息。
+    # ★ 第二次 wait 再被打斷就放手——使用者連按兩次 Ctrl-C 的意思是「現在就走」。
+    except KeyboardInterrupt:
+        try:
+            process.wait()
+        except KeyboardInterrupt:
+            pass
+        raise
     except (BrokenPipeError, OSError) as exc:
         if not _is_epipe(exc):
             raise
