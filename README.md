@@ -1,206 +1,172 @@
+[English](README.md) · [繁體中文](README.zh-TW.md)
+
 # pve-nettools
 
-Proxmox VE 網路盤查工具。
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.004.000**.
 
-> **English summary** — An interactive network audit tool for Proxmox VE hosts.
-> Inspects physical NICs (link, speed, MTU, media type, firmware, error counters,
-> carrier flapping), bonds, Linux bridges, Open vSwitch, VLANs and `bridge vlan`
-> filters, VM/CT interface mapping (`tap`/`veth` ↔ VMID), PVE SDN, corosync rings,
-> firewall status, routing/DNS/hosts — and reconciles VLANs used by guests against
-> those actually permitted on the bridge uplink.
-> Runs as an interactive menu, or non-interactively via `--report` for scheduled audits.
-> Bash only; needs `iproute2`, with `ethtool` and `lldpd` recommended.
-> Documentation below is in Traditional Chinese.
->
-> ```bash
-> git clone https://github.com/LongHopeFreedom/pve-nettools.git
-> cd pve-nettools
-> ./pve-network-audit.sh --self-test   # offline self-check, no root needed
-> sudo ./pve-network-audit.sh          # interactive menu
-> ```
->
-> ⚠ **Not yet verified on real Proxmox VE hardware** — see 「驗證限度」 below.
+Repository: `github.com/LongHopeFreedom/pve-nettools`
 
-授權：MIT ・ 作者：LeeFreedom（秉迅資訊 BingXun InfoTech）
+License: MIT — see `LICENSE`  
+負責人：LeeFreedom（秉迅資訊 BingXun InfoTech）
 
-| 檔案 | 內容 |
+## Project layout
+
+| Path | Purpose |
 |---|---|
-| `pve-network-audit.sh` | 主程式 |
-| `README.md` | 本檔——用法、盤查項目、依賴、判讀提示、驗證限度 |
-| `CHANGELOG.md` | 版本沿革與各版修了什麼、為什麼 |
-| `LICENSE` | MIT |
+| `pve-network-audit` | Python entry point |
+| `pve_nettools/` | Python package: 47 files, approximately 312 KB |
+| `pve_nettools/collect/` | Collection subpackage |
+| `pve_nettools/render/` | Rendering subpackage |
+| `pve-network-audit.sh` | Bash v02.002.001, retained for reference and not yet retired |
+| `CHANGELOG.md` | Version history |
+| `LICENSE` | MIT licence |
 
-版本號採 `XX.XXX.XXX` 慣例，現行版以 `./pve-network-audit.sh --version` 為準。
-版本字樣共三處（腳本檔頭、`VERSION` 變數、`CHANGELOG.md` 最上方），三者是否一致
-由 `--self-test` 實際比對，漂移會讓自檢變紅。
+## Installation
 
-## pve-network-audit.sh
+Python v03 requires Python 3.9 or newer and uses only the standard library: no pip installation or virtual environment is needed.
 
-互動式盤查 PVE 主機的實體網卡與網路設定，也可非互動輸出完整報告排進巡檢。
-
-### 安裝
+The public repository currently still ships the Bash version; Python v03 has not yet been released there. The commands below apply after the v03 files are published:
 
 ```bash
 git clone https://github.com/LongHopeFreedom/pve-nettools.git /opt/pve-nettools
 cd /opt/pve-nettools
-./pve-network-audit.sh --self-test   # 先跑內建自檢（不需 root，不碰系統狀態）
+chmod +x pve-network-audit
+sudo ./pve-network-audit
 ```
 
-### 用法
+You may also download the repository instead of cloning it. Run the audit as root. `pve-network-audit` is Python v03; `pve-network-audit.sh` is the retained Bash v02.002.001 implementation and has not yet been retired.
+
+## Usage
 
 ```bash
-./pve-network-audit.sh              # 互動選單
-./pve-network-audit.sh --report     # 非互動，直接輸出完整盤查報告（可排 cron）
-./pve-network-audit.sh --self-test  # 只跑內建自檢，不讀取系統網路狀態
-./pve-network-audit.sh --help
-./pve-network-audit.sh --version
+./pve-network-audit              # interactive menu
+./pve-network-audit --report     # write a complete non-interactive report
+./pve-network-audit --self-test  # built-in self-test; does not read network state
+./pve-network-audit --version
+./pve-network-audit --help
 ```
 
-需 root（`ethtool -m` 讀 SFP EEPROM、`ethtool -p` LED 定位、`/etc/pve` 讀取皆需要）。
-`--self-test` 不需 root。
+Normal audits require root; `--self-test` does not.
 
-### 盤查項目
+## Language selection
 
-| # | 項目 | 內容 |
+Choose a language at the startup prompt, press `L` in the menu to switch live, or set `PVE_AUDIT_LANG=zh` or `PVE_AUDIT_LANG=en`. Without that variable, language is inferred from `LC_ALL`, then `LC_MESSAGES`, then `LANG`. PVE locales are often `C`, which normally selects English.
+
+## Audit menu
+
+| # | Group | Item | Details |
+|---|---|---|---|
+| 0 | — | Exit | Exit the program |
+| 1 | phys | Physical NIC status and RX/TX | MAC, link, speed, duplex, MTU, media, RX/TX, driver, PCI address |
+| 2 | phys | NIC health | Link flaps, RX/TX errors and drops, CRC errors, autonegotiation, NUMA, firmware |
+| 3 | phys | SFP/QSFP module details | Vendor, part and serial numbers, connector, module type, temperature, voltage, optical power |
+| 4 | phys | Physical NIC LED identification | Uses `ethtool -p` for on-site cable identification |
+| 5 | l2 | Bond configuration and member state | Mode, members, active slave, hash policy, LACP rate, minimum links |
+| 6 | l2 | Linux Bridge | Ports, VLAN awareness, vlan_protocol, default_pvid, STP, MTU, IPv4/v6 |
+| 7 | l2 | Open vSwitch | OVS bridges, ports, VLAN tags, interfaces, and bond status |
+| 8 | l2 | VLAN sub-interfaces | VLAN ID, parent interface and type, MTU, state, IPv4 |
+| 9 | l2 | Bridge VLAN filter | Per-port allowed list with PVID and tagged/untagged markers |
+| 10 | l2 | VM/CT NIC mapping | `tap<vmid>i<n>` / `veth<vmid>i<n>` to VMID, name, bridge, VLAN tag, MTU, firewall, running state |
+| 11 | l2 | VLAN reconciliation | Guest VLANs versus VLANs allowed on the bridge uplink |
+| 12 | l3 | IP / routes / DNS / hosts / neighbour table | IPv4/IPv6 addresses and routes, resolv.conf, hosts, neighbours |
+| 13 | l3 | PVE SDN | Zones, vnets, subnets, controllers, and runtime state |
+| 14 | l3 | Cluster network (corosync) | ring0/ring1, `corosync-cfgtool -s`, `pvecm status` |
+| 15 | l3 | PVE firewall | `pve-firewall status`, cluster.fw, host.fw |
+| 16 | l3 | LLDP switch and port | Switch name, remote port, port description, summary and details |
+| 17 | l3 | Persistent network configuration | `/etc/network/interfaces`, `interfaces.d/`, and unapplied `.new` files |
+| 18 | overall | View all available items in sequence | Display every available audit item in order |
+| 19 | overall | Write a complete audit report | Write the complete report |
+| 20 | overall | Run the built-in self-test | Run the Python self-test |
+| 21 | added | sysctl networking parameters | **New in v03; absent from the Bash version** |
+| 22 | added | conntrack capacity | **New in v03; absent from the Bash version** |
+| 23 | added | Neighbour table capacity (ARP/NDP gc_thresh) | **New in v03; absent from the Bash version** |
+| 24 | added | Autostart reconciliation (auto/hotplug) | **New in v03; absent from the Bash version** |
+
+## Dependencies
+
+| Class | Package | Behaviour when missing |
 |---|---|---|
-| 1 | 實體網卡狀態 | MAC、Link、速率、Duplex、MTU、媒介、RX/TX、驅動、PCI 位址 |
-| 2 | 網卡健康 | carrier_changes（線路抖動）、RX/TX 錯誤與丟包、CRC 錯誤、自動協商、NUMA、韌體版本 |
-| 3 | SFP/QSFP 模組明細 | 廠商、料號、序號、接頭、模組型別、溫度、電壓、光收發功率 |
-| 4 | 網卡 LED 定位 | `ethtool -p`，用於機房現場找線 |
-| 5 | Bond | 模式、成員、Active Slave、Hash Policy、LACP Rate、Minimum Links、逐成員狀態 |
-| 6 | Linux Bridge | 綁定 Port、VLAN-aware、vlan_protocol、default_pvid、STP、MTU、IPv4/v6 |
-| 7 | Open vSwitch | OVS Bridge / Port / VLAN Tag / 成員介面 / Bond 狀態 |
-| 8 | VLAN 子介面 | VLAN ID、上層介面與其型別、MTU、狀態、IPv4 |
-| 9 | Bridge VLAN Filter | 逐 Port 放行清單，含 PVID 與 Untagged/Tagged 標記 |
-| 10 | VM/CT 網卡對應 | `tap<vmid>i<n>` / `veth<vmid>i<n>` ←→ VMID、名稱、bridge、VLAN tag、MTU、防火牆、是否執行中 |
-| 11 | VLAN 對帳 | Guest 使用的 VLAN vs Bridge Uplink 實際放行的 VLAN，列出未放行者 |
-| 12 | IP / 路由 / DNS | IPv4+IPv6 位址與路由表、`/etc/resolv.conf`、`/etc/hosts`、鄰居表 |
-| 13 | PVE SDN | zones / vnets / subnets / controllers 與執行期狀態 |
-| 14 | 叢集網路 | corosync ring0/ring1、`corosync-cfgtool -s`、`pvecm status` |
-| 15 | PVE 防火牆 | `pve-firewall status`、cluster.fw、host.fw |
-| 16 | LLDP | 交換器名稱、對端 Port、Port 說明（鄰居摘要表＋完整明細） |
-| 17 | 持久化設定 | `/etc/network/interfaces` 與 `interfaces.d/`，並偵測未套用的 `.new` |
-
-### 依賴
-
-| 類別 | 套件 | 缺少時的行為 |
-|---|---|---|
-| 必要 | `iproute2`（`ip`、`bridge`） | 相關章節顯示提示並略過 |
-| 建議 | `ethtool` | 速率／Duplex／媒介／韌體／LED 顯示 N/A |
-| 建議 | `lldpd` | 無法查詢交換器與 Port |
-| 選用 | `openvswitch-switch` | 僅 OVS 環境需要；Linux Bridge 環境不裝屬正常 |
+| Required | `iproute2` (`ip`, `bridge`) | Affected sections show a notice and are skipped |
+| Recommended | `ethtool` | Speed, duplex, firmware, and LED data show N/A; media shows "Unknown" |
+| Recommended | `lldpd` | Switch and port mapping is unavailable |
+| Optional | `openvswitch-switch` | Needed only for OVS environments |
 
 ```bash
 apt update && apt install -y ethtool lldpd
 systemctl enable --now lldpd
 ```
 
-### 環境變數
+## Environment variables
 
-| 變數 | 預設 | 用途 |
+| Variable | Default or priority | Purpose |
 |---|---|---|
-| `REPORT_DIR` | `/root` | 報告輸出目錄 |
-| `TERM_WIDTH` | 自動偵測 | 強制指定終端寬度，決定用表格版還是區塊版 |
-| `LIST_LIMIT` | `50` | 路由／鄰居等清單的顯示上限（超量會明說截掉幾筆） |
-| `SAMPLE_SECONDS` | `3` | RX/TX 取樣秒數 |
-| `BLINK_SECONDS` | `10` | LED 定位閃爍秒數 |
-| `PVE_CONF_ROOT` | `/etc/pve` | PVE 設定根目錄 |
-| `SYS_NET_ROOT` | `/sys/class/net` | sysfs 網路根目錄（供離線測試指向 fixture） |
+| `REPORT_DIR` | `/root` | Report output directory |
+| `LIST_LIMIT` | `50` | Display limit for routes, neighbours, and similar lists; truncation is reported |
+| `SAMPLE_SECONDS` | `3` | RX/TX sampling period in seconds |
+| `BLINK_SECONDS` | `10` | LED identification duration in seconds |
+| `PVE_CONF_ROOT` | `/etc/pve` | PVE configuration root |
+| `PVE_AUDIT_LANG` | `zh` or `en` | Interface language |
+| `NO_PAGER` | enabled when set to `1` | Disable `less`/`more` paging |
+| `TERM_WIDTH` | first width source | Force layout width |
+| `COLUMNS` | after `TERM_WIDTH` | Supply layout width |
+| `LC_ALL` / `LC_MESSAGES` / `LANG` | fallback in this order | Infer language when `PVE_AUDIT_LANG` is unset |
 
-### 分頁與橫向捲動
+### Paging and horizontal scrolling
 
-互動檢視的輸出會交給 `less`：
+Interactive output is sent to `less`:
 
-| 按鍵 | 作用 |
+| Key | Action |
 |---|---|
-| `↑` `↓` `PgUp` `PgDn` | 上下捲動 |
-| `←` `→` | **橫向捲動**（長行不折行） |
-| `/關鍵字` | 搜尋（在幾十台 VM 裡找某個 VLAN 很好用） |
-| `q` | 返回主選單 |
+| `↑` `↓` `PgUp` `PgDn` | Scroll vertically |
+| `←` `→` | **Scroll horizontally** without wrapping long lines |
+| `/keyword` | Search, for example for a VLAN among dozens of VMs |
+| `q` | Return to the main menu |
 
-要關掉分頁用 `NO_PAGER=1 ./pve-network-audit.sh`。報告模式（`--report`）不受影響，
-不會被 pager 接走。
+Use `NO_PAGER=1 ./pve-network-audit` to disable paging. Report mode (`--report`) does not send its output to the pager.
 
-### VLAN 清單顯示
+### VLAN list display
 
-連續的 VLAN 會壓成範圍顯示。`bridge-vids 2-4090` 這種設定，即使 `bridge vlan show`
-是逐個列出 4089 行，表上也只會顯示成 `2-4090t`（後綴 `u`=Untagged、`t`=Tagged）。
-清單過長時折行續列，不會擠成一長條把前面的內容推出畫面。
+Consecutive VLANs are collapsed into ranges. A `bridge-vids 2-4090` configuration is shown as `2-4090t` even when `bridge vlan show` lists 4,089 individual lines. The suffix `u` means untagged and `t` means tagged. Long lists wrap onto continuation rows.
 
-### 多網卡與窄終端
+### Multiple NICs and narrow terminals
 
-實體網卡、網卡健康、VM/CT 網卡對應這三項會把**所有網卡一次列出**（一列一張）；
-SFP/QSFP 模組明細是**逐張區塊**且只印有模組的（RJ45 電口自動跳過）；LED 定位則是
-**列成選單讓你挑一張**。
+Physical NIC status, NIC health, and VM/CT NIC mapping list every NIC at once, one per row. SFP/QSFP module details use per-card blocks and show only cards with modules, automatically skipping RJ45 copper ports. LED identification presents a menu for selecting one NIC.
 
-三張寬表格需要約 132 欄。終端不夠寬時會**自動改用逐張區塊**，欄位垂直排列，不會
-折行——PVE 網頁主控台（noVNC）預設寬度就在這個邊界附近。要強制指定用
-`TERM_WIDTH=200 ./pve-network-audit.sh`。
+The three wide tables need approximately 132 columns. On a narrower terminal, they automatically fall back to per-card blocks with fields arranged vertically. The default width of the PVE web console (noVNC) is near this boundary. Use `TERM_WIDTH=200 ./pve-network-audit` to force the width.
 
-報告檔不受終端寬度影響，恆為表格版。
+Report files always use the table layout regardless of terminal width.
 
-### 報告檔含敏感內容
+## Reports and scheduling
 
-報告會納入 **corosync 叢集拓撲與各節點 IP、防火牆規則、`/etc/hosts`、完整路由表**。
-腳本以 `umask 077` 建立並顯式 `chmod 600`，但**目錄權限仍是你的責任**——若把
-`REPORT_DIR` 指到 0755 的共用目錄，其他人雖讀不到檔案內容，仍看得到檔名與時間。
-
-### 排進定期巡檢
+Reports contain the corosync cluster topology and node IPs, firewall rules, and `/etc/hosts`, and are created with mode 0600. If using a shared report directory, verify its permissions yourself.
 
 ```bash
-# 報告含叢集拓撲與防火牆規則，目錄權限務必設 0700
 install -d -m 0700 /var/log/pve-audit
-
-# 每週一 06:00 產出報告
-0 6 * * 1 REPORT_DIR=/var/log/pve-audit /opt/pve-nettools/pve-network-audit.sh --report
+0 6 * * 1 REPORT_DIR=/var/log/pve-audit /opt/pve-nettools/pve-network-audit --report
 ```
 
-### 內建自檢
+## Built-in self-test
 
-`--self-test` 對有已知正確答案的判定邏輯做比對，涵蓋顯示寬度計算、VLAN 清單展開、
-欄位值擷取、sysfs 讀取失敗處理、guest 介面命名判定、媒介判定、`bridge vlan show`
-解析、**ethtool 實際呼叫次數**、清單截斷的揭露、報告檔權限。
-每次改動判定邏輯後應先跑一次；rc 非 0 即代表有判定迴歸。
+`--self-test` covers exactly these five groups; use the check count printed by the command rather than a hardcoded count:
 
-自檢本身以突變測試驗證過鑑別力——分別破壞線長判準、顯示寬度演算法、`bridge vlan`
-解析的 rest 清空保護、`read_sysfs` 判準、VLAN 範圍展開、光纖分支條件、RJ45 接頭判斷、
-BASE-T 型別判斷、迴圈中的快取預熱、截斷揭露，每一處都會讓自檢變紅；未突變的原檔為綠。
+- `group_width`: ASCII, CJK, and mixed display width, padding, and truncation.
+- `group_vlan`: VLAN expansion, empty input, round trips, and membership checks.
+- `group_guest`: guest fields, key/value parsing, and valid/invalid MAC checks.
+- `group_netconf`: joining network configuration, stanzas, comments, blanks, and `auto` handling.
+- `group_i18n`: translation differences, empty values, and supported languages.
 
-**未能驗證的項目會標成 `[SKIP]` 並單獨計數，不會混進「全部通過」。** 例如在 Windows
-開發機上 `chmod` 設不出 0600，報告檔權限那項就會標為未驗證而非通過。
+Run it after changing decision logic. A non-zero return code indicates a failed decision check.
 
-### ⚠ 驗證限度
+## Verification limits
 
-**本工具尚未在真正的 Proxmox VE 主機上執行過。** 目前所有驗證都在開發機以模擬的
-sysfs 與 PVE 設定檔進行，自檢樣本是依 SFF-8472 等規格**構造**的，不是真機擷取。
+**Python v03 has not yet been verified on a real Proxmox VE host.** Only menu item 1 has been confirmed to match the Bash output. Items 2–24—including all new items 21–24—and every other Python execution path remain unverified on real hardware.
 
-以下部分完全沒有真機驗證，首次上線請對照實際輸出確認：
+For the first run: execute `--self-test` → inspect each menu item while comparing it with raw `ip` / `ethtool` output → schedule recurring reports only after the results are confirmed.
 
-- `ethtool` / `ethtool -m` 的實際輸出格式與 SFP EEPROM 內容
-- `bridge vlan show` 在該版 iproute2 的實際格式
-- `lldpcli show neighbors details` 的解析
-- Open vSwitch 全部功能
-- `corosync-cfgtool` / `pvecm` / `pvesh` / `pve-firewall`
-- `/proc/net/bonding/*` 的解析
-- 報告檔 0600 權限
+## Interpretation notes
 
-建議首次執行順序：`--self-test` → 選單逐項檢視並與 `ip` / `ethtool` 原始輸出對照 →
-確認無誤後才排進定期巡檢。
-
-## 判讀提示
-
-**媒介欄**依 SFF-8472 的結構化欄位判定，優先序為：`Port: Twisted Pair` → 模組接頭是否
-RJ45／型別是否 BASE-T → 銅纜與光纖線長欄位 → 接頭與線纜技術的錨定詞。不掃整份
-`ethtool -m` 輸出，因為其中的 `Transceiver`、`Optical diagnostics support` 等欄位名會讓
-關鍵詞比對對 DAC 產生假陽性。
-
-**Link 變動（carrier_changes）** 開機後正常值為 1～2。持續增加代表線路、模組或對端
-Port 抖動，是最容易被「目前 Link 正常」掩蓋的故障。
-
-**CRC 錯誤**非 0 幾乎必為實體層問題（線材、模組、對端 Port），與上層設定無關。
-
-**VLAN 對帳**的「Uplink 未放行」是 VLAN 不通最常見的原因。但若交換器 Port 設為
-access（不打 tag），guest 端本就不應再設 tag，屬另一種情形，不在此判準射程內。
-
-**MTU** 不一致（例如 bridge 1500 而 guest 9000）在一般流量下不會報錯，只在大封包時
-才失敗，屬於典型的間歇性故障來源，建議每次盤查都比對。
+- **Media column:** Determination uses SFF-8472 structured fields in this priority order: `Port: Twisted Pair` → whether the connector is RJ45 or the type is BASE-T → copper and fibre cable-length fields → anchor words in the connector and cable-technology fields. The program does not keyword-scan the entire `ethtool -m` output because field names such as `Transceiver` and `Optical diagnostics support` would cause false positives for DAC.
+- A continuously increasing `carrier_changes` value may indicate link, module, or remote-port flapping.
+- Non-zero CRC errors normally point to a physical-layer issue.
+- An uplink that does not allow a guest VLAN is a common cause of loss of connectivity; an access-port design is a separate case.
+- Bridge and guest MTU mismatches may fail only with large packets and should be compared during each audit.

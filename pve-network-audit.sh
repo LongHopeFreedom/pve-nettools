@@ -2573,8 +2573,25 @@ EOF
 
         chg_file="$(dirname "$self_file")/CHANGELOG.md"
         if [[ -f "$chg_file" ]]; then
-            chg_ver=$(awk '/^## v[0-9]/ { sub(/^## v/, ""); sub(/（.*/, ""); gsub(/[[:space:]]/, ""); print; exit }' "$chg_file")
-            check "CHANGELOG 最新版本 == VERSION 變數" "$VERSION" "$chg_ver"
+            # [CHANGE] 2026-08-02：由「最上方那個版本 == VERSION」改為「CHANGELOG
+            # 內存在本版的條目」。
+            #
+            # 原判準隱含一個前提：**一個 repo 只有一條版本軸線**，所以最新的條目
+            # 必然就是我這一版。Python 重寫之後這個前提消失了——同一份 CHANGELOG
+            # 同時服務 bash v02 與 Python v03，最上方是 v03，而本檔仍是 v02。
+            #
+            # 這種紅不是「程式壞了」，是「判準守的世界已經不存在」。把 CHANGELOG
+            # 的 v03 條目往下挪可以讓它變綠，但那是為了配合判準去說謊。
+            #
+            # 新判準保留原本的意圖（註解寫的是「改了其中一處而另兩處留在舊版」）：
+            # 只要本版在 CHANGELOG 裡找得到條目，就沒有漂移。它不再管誰在最上方。
+            #
+            # ★ 這條只在**公開版**真的跑得到：內部版腳本在 old/ 底下，
+            #   dirname 取到的是 old/，那裡沒有 CHANGELOG.md ⇒ 走 skip。
+            #   也就是說它的失敗只會在發版當下現形，跑內部測試看不到。
+            chg_ver=$(awk -v want="$VERSION" \
+                '$0 ~ "^## v" want "([（ ]|$)" { print want; exit }' "$chg_file")
+            check "CHANGELOG 含本版（v$VERSION）條目" "$VERSION" "$chg_ver"
         else
             skip "CHANGELOG 版本比對" "找不到 $chg_file"
         fi

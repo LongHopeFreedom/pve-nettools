@@ -10,3 +10,61 @@
 # 此外 CRLF 會讓字串尾帶 \r，導致 sysfs 讀值比對、介面名判定等靜默錯誤，
 # 這類錯誤不會讓腳本中止，只會讓判定結果無聲地變錯。
 *.sh text eol=lf
+
+# [CHANGE] 2026-07-31 Python 重寫：同一個理由適用於 .py。
+# CRLF 的 .py 本身還跑得動（Python 支援 universal newlines），但
+# 三元凶依舊在：字串尾帶 \r 使 sysfs 讀值比對靜默失真、diff 整檔翻動、
+# 以及最致命的——**入口腳本**的 shebang 會變成 `#!/usr/bin/env python3\r`，
+# 在 Debian 上直接 `bad interpreter`。
+*.py text eol=lf
+
+# [CHANGE] 2026-08-02 待辦 #10：入口檔建立，上面那條待辦就地兌現。
+# 檔名不帶副檔名（`pve-network-audit`，刻意拿掉 bash 版的 `.sh`——它已經不是
+# shell script 了），故 `*.sh` 與 `*.py` 兩條 glob 都涵蓋不到它，而它正是最怕
+# CRLF 的那一個：shebang 一旦變成 `#!/usr/bin/env python3\r`，在 Debian 上直接
+# `bad interpreter`，而且錯誤訊息完全不會提到 `\r`。
+#
+# ★ 這條規則本身無法保證可執行位。MUST 另外檢查 `git ls-tree HEAD -r` 的模式欄
+#   是否為 100755——Windows 的 core.filemode=false 會讓可執行位靜默掉成 100644，
+#   且 `git status` 對此毫無反應。
+pve-network-audit text eol=lf
+
+# [CHANGE] 2026-08-03 待辦 #43：pre-push hook 同樣是「無副檔名的可執行腳本」。
+#
+# 上面那條規則的立論**逐字適用**於它：`*.sh` 與 `*.py` 兩條 glob 都涵蓋不到，
+# 而它的 shebang 一旦變成 `#!/usr/bin/env bash\r`，在 Linux 上就是 bad interpreter。
+#
+# ★ 這條是 `git add` 自己的警告告訴我的：「LF will be replaced by CRLF the next
+#   time Git touches it」。**同一個病早就修過一次，只是修在隔壁那個檔上**——
+#   加規則的當下沒有人會想到「以後還會有第二個無副檔名的腳本」。
+tools/hooks/pre-push text eol=lf
+
+# [CHANGE] 2026-08-03：**規則檔自己也不在規則的射程內**——這是同一個病的第三次。
+#
+# 加上一條規則之後，`git add` 又警告了一次，這次指的是 `.gitattributes` 本身：
+# 它不是 `.sh`／`.py`／`.md`，也不叫 `pve-network-audit`，所以沒有任何一條蓋到它。
+# 影響比腳本小（git 解析 `.gitattributes` 容忍 CRLF），但它在 SYNC_FILES 裡會發到
+# 公開倉，而且行尾一翻整檔 diff 就跟著翻。
+#
+# ★ 三次的共同形態：**規則以「檔名樣式」列舉對象，而新對象總是長得不一樣**。
+#   真正的性質是「這個檔會被 Linux 讀」，沒有任何 glob 表達得出來——所以每加一個
+#   新檔都要問一次，而唯一會提醒你的是 git 那句 checkout 警告。
+.gitattributes text eol=lf
+
+# [CHANGE] 2026-08-02：`.md` 也納入。
+#
+# 這三條規則守的都是「拿到 Linux 上會壞掉」的檔，而 `.md` 一直不在其中——理由大概
+# 是文件不會被執行。但 `CHANGELOG.md` 與公開版的兩份 README **在 SYNC_FILES 裡**，
+# 而發版腳本的 check_line_endings() 對公開版目錄的 `*.md` 是 fail-closed 的。
+#
+# 實測（2026-08-02）：本 repo `core.autocrlf=true`，而 `git check-attr text -- *.md`
+# 回 `unspecified` ⇒ checkout 時 `.md` 會被轉成 CRLF。git 自己在 `git diff` 時就印了
+# 這句警告：「LF will be replaced by CRLF the next time Git touches it」。
+#
+# ★ 為什麼至今沒發作：發版都發生在剛編輯完文件的當下，工作區還是編輯器寫入的 LF，
+#   沒有經過一次 checkout。也就是說**這個缺口的暴露條件是「換一台機器或換一個
+#   worktree 之後才發版」**——那正是最不容易聯想到行尾的時機。
+#
+# ★ 本條只影響未來的 checkout／commit，不會改動現有工作區檔案。若要一次正規化，
+#   需另外執行 `git add --renormalize .`，那會產生一次全 `.md` 的 diff，故不在此做。
+*.md text eol=lf

@@ -1,0 +1,31 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+# [CHANGE] 2026-08-02 待辦 #10：Python 版入口，對應 bash 版的 pve-network-audit.sh。
+"""pve-network-audit — Proxmox VE 互動式網路盤查工具的入口。
+
+★ 檔名刻意不帶副檔名：
+  * 不留 `.sh`——它已經不是 shell script，留著會誤導在 production 主機上找腳本的人；
+  * 不用 `.py`——它是**指令**不是模組。`import` 它沒有意義，而現場要打的是
+    `./pve-network-audit --report`，不是 `python3 pve-network-audit.py --report`。
+
+  代價是 `.gitattributes` 的 `*.sh` 與 `*.py` 兩條 glob 都涵蓋不到它，必須為它
+  單獨補一行（已補）。CRLF 會讓 shebang 變成 `#!/usr/bin/env python3\r`，在
+  Debian 上直接 `bad interpreter`——而那句錯誤訊息完全不會提到 `\r`。
+
+★ 這一層 MUST 保持薄。邏輯全部在 `pve_nettools.cli.main()`，因為**無副檔名的檔
+  import 不進來**，寫在這裡的任何判斷都沒有辦法被測試涵蓋。同理，離開碼由
+  `main()` 回傳而不是在它裡面 `sys.exit()`，那是為了讓分派表逐列可測。
+"""
+
+import os
+import sys
+
+# 讓工具被 clone 到任何位置都能直接跑（/opt/pve_nettools、/root/... 皆可），
+# 不需要 pip install、也不需要事先設 PYTHONPATH——這是運維工具的部署前提：
+# 使用者在別人的 production 主機上，能做的只有 clone 下來就執行。
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from pve_nettools.cli import main  # noqa: E402  MUST 在調整 sys.path 之後才 import
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
