@@ -17,7 +17,7 @@ Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、�
 | `pve_nettools/` | Python 套件，共 47 個檔案、約 312 KB |
 | `pve_nettools/collect/` | 資料收集子套件 |
 | `pve_nettools/render/` | 輸出呈現子套件 |
-| `pve-network-audit.sh` | Bash v02.002.001，保留作為參考，尚未退役 |
+| `pve-network-audit.sh` | Bash v02.002.001 —— **舊版備援**，凍結不再更新 |
 | `CHANGELOG.md` | 版本沿革 |
 | `LICENSE` | MIT 授權條款 |
 
@@ -34,7 +34,13 @@ chmod +x pve-network-audit
 sudo ./pve-network-audit
 ```
 
-也可以直接下載儲存庫。一般盤查請以 root 執行。`pve-network-audit` 是 Python v03；`pve-network-audit.sh` 是仍保留且尚未退役的 Bash v02.002.001。
+也可以直接下載儲存庫。一般盤查請以 root 執行。
+
+### 該用哪一個
+
+**請用 `pve-network-audit`（Python v03）——它是主線版本**，功能較多（選單 21–24 是 v03 新增的），也是後續唯一會更新的版本。
+
+`pve-network-audit.sh` 是 **Bash v02.002.001，已凍結於該版不再更新**，保留在儲存庫裡有兩個用途：與 Python 版對照，以及在 Python 版尚未於真機驗證過的情境（Bond、SFP/QSFP 模組、VLAN 子介面——詳見下方「驗證限度」）遇到問題時，還有一個已完整驗證過的版本可以退回使用。
 
 ## 用法
 

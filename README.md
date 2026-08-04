@@ -17,7 +17,7 @@ License: MIT — see `LICENSE`
 | `pve_nettools/` | Python package: 47 files, approximately 312 KB |
 | `pve_nettools/collect/` | Collection subpackage |
 | `pve_nettools/render/` | Rendering subpackage |
-| `pve-network-audit.sh` | Bash v02.002.001, retained for reference and not yet retired |
+| `pve-network-audit.sh` | Bash v02.002.001 — **legacy fallback**, frozen and no longer updated |
 | `CHANGELOG.md` | Version history |
 | `LICENSE` | MIT licence |
 
@@ -34,7 +34,13 @@ chmod +x pve-network-audit
 sudo ./pve-network-audit
 ```
 
-You may also download the repository instead of cloning it. Run the audit as root. `pve-network-audit` is Python v03; `pve-network-audit.sh` is the retained Bash v02.002.001 implementation and has not yet been retired.
+You may also download the repository instead of cloning it. Run the audit as root.
+
+### Which one to use
+
+**Use `pve-network-audit` (Python v03) — it is the main version**, has more features (menu items 21–24 are new in v03), and is the only one that will receive further updates.
+
+`pve-network-audit.sh` is **Bash v02.002.001, frozen at that version and no longer updated**. It is kept in the repository for two reasons: to compare against the Python version, and to give you a fully verified fallback should you hit trouble in the situations the Python version has not yet been verified against on real hardware (bonds, SFP/QSFP modules, VLAN sub-interfaces — see "Verification limits" below).
 
 ## Usage
 
