@@ -336,7 +336,10 @@ class NetconfReader(object):
                 "sources": sources,
                 "unreadable": unreadable,
                 "pending_change": pending,
-                "error": "%s：%s" % (self.conf_file, main_error),
+                # [CHANGE] 2026-08-05 待辦 #14：全形冒號改半形。這個 error 會被
+                #   render/netconf.py 直接印給使用者，而 collect 層沒有語言概念
+                #   ⇒ 內容 MUST 語言中立（路徑＋系統訊息本來就是）。
+                "error": "%s: %s" % (self.conf_file, main_error),
             }
 
         auto_set = set(auto)
@@ -356,15 +359,21 @@ class NetconfReader(object):
             "error": None,
         }
 
-    def autostart(self):
-        """回傳 render 層可直接使用的 auto 與 hotplug 對帳原語。"""
-        result = self.read()
-        return {"auto": result["auto"], "hotplug": result["hotplug"]}
+    # [CHANGE] 2026-08-04 待辦 #19：這裡原本有一個 autostart()，把 read() 的
+    #   auto / hotplug 投影成 {"auto": [...], "hotplug": [...]}。**已移除。**
+    #
+    #   它的問題不是沒人用，是**結構上表達不了 unavailable**：讀不到
+    #   /etc/network/interfaces 時它回 auto=[]，於是每一張執行中的網卡都會被判成
+    #   「執行中但未設 autostart——重開機後會消失」。那不是漏報，是憑空生出的
+    #   嚴重警告，而整份報告不會有一個字說設定檔根本沒讀到。
+    #   2026-08-01 起 render/netconf.py 已改走 read() 並檢查三態；這個公開捷徑
+    #   留著只會讓下一個呼叫端再失去一次 status。
+    #   ⇒ 要 auto / hotplug 請直接讀 read()，它帶著 status 與 unreadable。
 
-    def comments(self):
-        """回傳介面名稱到註解的對照；同名 stanza 以後出現的註解為準。"""
-        table = {}
-        for stanza in self.read()["interfaces"]:
-            if stanza["comment"] is not None:
-                table[stanza["name"]] = stanza["comment"]
-        return table
+    # [CHANGE] 2026-08-05 待辦 #61：移除 comments()。它是 2026-08-02 待辦 #26
+    # 那一批的漏網殘留——當時使用者裁決把 nic.comment 欄移除（理由：bash 的
+    # render_physical_nics 從不讀 /etc/network/interfaces，那一欄是 Python 版
+    # 憑空多出來的），同批的 _comment_text 等三個輔助函式都刪了，只有這個
+    # 公開捷徑留著，此後產品碼零呼叫端。
+    # ★ 註解「文字」仍照常解析並掛在 stanza["comment"] 上（read() 帶著它），
+    #   移除的只是這條沒有呼叫端的對照表捷徑。

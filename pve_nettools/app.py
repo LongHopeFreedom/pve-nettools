@@ -23,7 +23,8 @@ from .render import (AutostartSection, BondSection, BridgeSection,
                      IpRoutingSection, LldpSection, ModuleSection,
                      NeighSection, NicSection, OvsSection, Palette,
                      PersistentSection, REPORT_WIDTH, RenderContext,
-                     SdnSection, SysctlSection, VlanReconcileSection,
+                     RingOffloadSection, SdnSection, SysctlSection,
+                     VlanReconcileSection,
                      VlanSubSection, term_width)
 from .render.iprouting import DEFAULT_LIST_LIMIT
 from .util import positive_int
@@ -98,6 +99,11 @@ MENU_ENTRIES = (
               lambda r: NeighSection(r.sysctl)),
     MenuEntry(24, "added", "menu.autostart", None,
               lambda r: AutostartSection(r.netconf, r.sysfs)),
+    # [CHANGE] 2026-08-04 待辦 #13：編號 25，不是 26。既有編號是 0..24（共 25 個
+    #          條目），所以新項目**是第 26 個條目、編號 25**。委派規格誤寫成 26，
+    #          結果選單缺號、從 24 直接跳 26——那是使用者看得到的。
+    MenuEntry(25, "added", "menu.ring_offload", None,
+              lambda r: RingOffloadSection(r.sysfs, r.ethtool)),
 )
 
 INTERACTIVE_NUMBERS = frozenset((4,))

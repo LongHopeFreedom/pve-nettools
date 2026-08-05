@@ -59,7 +59,7 @@ class EthtoolReader:
     def _parsed(command, parser):
         return parsed_result(command, parser)
 
-    # ── 四類 ethtool 資料 ─────────────────────────────────────────────
+    # ── ethtool 資料 ─────────────────────────────────────────────────
 
     def link_info(self, nic):
         """保留未知值為 None；不能把「沒驗到 link」說成「確定 link down」。"""
@@ -74,6 +74,12 @@ class EthtoolReader:
 
     def statistics(self, nic):
         return self._parsed(self._command(nic, "-S"), _parse_statistics)
+
+    def ring(self, nic):
+        return self._parsed(self._command(nic, "-g"), _parse_ring)
+
+    def offload(self, nic):
+        return self._parsed(self._command(nic, "-k"), _parse_offload)
 
     # ── 媒介判定 ──────────────────────────────────────────────────────
 
@@ -285,3 +291,86 @@ def _parse_statistics(text):
         except (TypeError, ValueError):
             counters[name.strip()] = value
     return counters
+
+def _parse_ring(text):
+    """解析 ``ethtool -g`` 的 maximum/current 兩個固定區塊。"""
+    if not text:
+        return {}
+
+    names = {
+        "RX": "rx",
+        "RX Mini": "rx_mini",
+        "RX Jumbo": "rx_jumbo",
+        "TX": "tx",
+    }
+    suffixes = ("max", "current")
+    fields = dict(
+        ("%s_%s" % (name, suffix), None)
+        for suffix in suffixes
+        for name in ("rx", "rx_mini", "rx_jumbo", "tx")
+    )
+    # 有序：Python 3.7+ 的 dict 保留插入序，這裡沿用驅動輸出的順序。
+    extra = {}
+    section_name = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped == "Pre-set maximums:":
+            section_name = "max"
+            continue
+        if stripped == "Current hardware settings:":
+            section_name = "current"
+            continue
+        if section_name is None:
+            continue
+        name, value = _split_field(line)
+        if name is None or not name:
+            continue
+        if name in names:
+            fields["%s_%s" % (names[name], section_name)] = (
+                None if value.lower() == "n/a" else value)
+            continue
+        # [CHANGE] 2026-08-04 真機回報後修正：**其餘欄位不再丟掉。**
+        #
+        # 原本這裡是 `if name not in names: continue`——只認四個欄位名，其餘一律
+        # 忽略。真機（PVE-201 的 r8169）實測 `ethtool -g` 另有 6 個欄位，其中
+        # **`TX Push` 與 `RX Push` 是真值（off）不是 n/a**，全部被靜默丟掉。
+        #
+        # ★★ 這是同一個病的第三次：offload 是 63 取 10、`.gitattributes` 是檔名
+        #   列舉漏掉新檔、這次是 10 個欄位名取 4。**我一再用「我想得到的清單」
+        #   取代「真實資料的形狀」**，而每一次都要真機輸出被人看見才會發現。
+        # ★ 同一個欄位名若兩段都出現（實測 `TX push buff len` 如此），
+        #   **後出現的贏**——Current 段在後，而「目前是什麼狀態」正是盤查要問的。
+        extra[name] = None if value.lower() == "n/a" else value
+
+    if all(value is None for value in fields.values()) and not extra:
+        return {}
+    # `extra` 是第 9 個 key，恆存在（可能為空 dict）。呼叫端不必 .get() 兜底。
+    fields["extra"] = extra
+    return fields
+
+
+def _parse_offload(text):
+    """解析 ``ethtool -k``，保留驅動輸出的平面順序與 fixed 狀態。"""
+    if not text:
+        return {}
+
+    features = {}
+    order = []
+    for line in text.splitlines():
+        name, value = _split_field(line)
+        if name is None or not value:
+            continue
+        match = re.match(r"^(on|off)(?:\s+(\[fixed\]))?\s*$",
+                         value, re.IGNORECASE)
+        if match is None:
+            continue
+        feature = name.strip()
+        features[feature] = {
+            "value": match.group(1).lower(),
+            "fixed": match.group(2) is not None,
+        }
+        order.append(feature)
+
+    if not features:
+        return {}
+    return {"features": features, "order": order}

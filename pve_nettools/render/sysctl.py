@@ -79,8 +79,13 @@ class ConntrackSection(_CapacitySection):
     source_key = "conntrack"
 
     def blocks(self, data, ctx):
+        # [CHANGE] 2026-08-05 待辦 #14：原本直接印 collect 層的 error 字串，而那一層
+        #   的訊息是硬編中文、不經訊息表 ⇒ `LANG=en` 下這一行會漏出中文（實測）。
+        #   ★ 措辭與語言是 render 層的職責；collect 的 error 留給診斷用途。
+        #   ★ collect 那個字串是**固定**的（不含路徑等動態內容），所以改由這裡出
+        #     不會遺失任何資訊——netconf 那條含路徑，故處置方式不同。
         if data.get("status") == STATUS_UNAVAILABLE:
-            return [note(_value(data.get("error")), ctx.palette)]
+            return [note(t("conntrack.unavailable"), ctx.palette)]
         usage = data.get("usage")
         usage_text = t("app.na") if usage is None else "%.1f%%" % (usage * 100.0)
         lines = [
@@ -97,8 +102,9 @@ class NeighSection(_CapacitySection):
     source_key = "neigh"
 
     def blocks(self, data, ctx):
+        # [CHANGE] 2026-08-05 待辦 #14：同 ConntrackSection，理由見該處註解。
         if data.get("status") == STATUS_UNAVAILABLE:
-            return [note(_value(data.get("error")), ctx.palette)]
+            return [note(t("neigh.unavailable"), ctx.palette)]
         thresholds = " / ".join(
             _value(data.get(key))
             for key in ("gc_thresh1", "gc_thresh2", "gc_thresh3"))

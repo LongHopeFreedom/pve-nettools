@@ -21,13 +21,13 @@ from .base import DecoratedTable, Section, block_title, error, kv, note
 
 __all__ = ["HealthSection", "NicSection", "link_state"]
 
-# [CHANGE] 2026-08-01 媒介常數與翻譯鍵並非一對一；AUI/MII 明確降級成未知，
-# 不以字串拼接產生不存在的 i18n key。
+# [CHANGE] 2026-08-04 待辦 #20：每個已辨識媒介都有自己的翻譯鍵；仍用顯式對照，
+# 不以字串拼接產生可能不存在的 i18n key。
 MEDIA_KEYS = {
     ethtool_collect.MEDIUM_RJ45: "media.rj45",
     ethtool_collect.MEDIUM_BACKPLANE: "media.backplane",
-    ethtool_collect.MEDIUM_AUI: "media.unknown",
-    ethtool_collect.MEDIUM_MII: "media.unknown",
+    ethtool_collect.MEDIUM_AUI: "media.aui",
+    ethtool_collect.MEDIUM_MII: "media.mii",
     ethtool_collect.MEDIUM_DAC: "media.dac",
     ethtool_collect.MEDIUM_AOC: "media.aoc",
     ethtool_collect.MEDIUM_FIBER: "media.fiber",

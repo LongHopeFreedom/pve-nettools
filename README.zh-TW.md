@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.005.000**。
+Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.012.000**。
 
 儲存庫：`github.com/LongHopeFreedom/pve-nettools`
 
@@ -14,7 +14,7 @@ Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、�
 | 路徑 | 內容 |
 |---|---|
 | `pve-network-audit` | Python 進入點 |
-| `pve_nettools/` | Python 套件，共 47 個檔案、約 312 KB |
+| `pve_nettools/` | Python 套件，共 48 個檔案、約 378 KB |
 | `pve_nettools/collect/` | 資料收集子套件 |
 | `pve_nettools/render/` | 輸出呈現子套件 |
 | `pve-network-audit.sh` | Bash v02.002.001 —— **舊版備援**，凍結不再更新 |
@@ -40,7 +40,7 @@ sudo ./pve-network-audit
 
 **請用 `pve-network-audit`（Python v03）——它是主線版本**，功能較多（選單 21–24 是 v03 新增的），也是後續唯一會更新的版本。
 
-`pve-network-audit.sh` 是 **Bash v02.002.001，已凍結於該版不再更新**，保留在儲存庫裡有兩個用途：與 Python 版對照，以及在 Python 版尚未於真機驗證過的情境（Bond、SFP/QSFP 模組、VLAN 子介面——詳見下方「驗證限度」）遇到問題時，還有一個已完整驗證過的版本可以退回使用。
+`pve-network-audit.sh` 是 **Bash v02.002.001，已凍結於該版不再更新**，保留在儲存庫裡有兩個用途：與 Python 版對照，以及在下方「驗證限度」列出的未涵蓋情境遇到問題時，還有一個已完整驗證過的版本可以退回使用。（未涵蓋的清單只寫在那一節，這裡不重複——兩份清單遲早會漂移。）
 
 ## 用法
 
@@ -87,6 +87,7 @@ sudo ./pve-network-audit
 | 22 | added | conntrack 連線追蹤容量 | **v03 新增；Bash 版沒有此項** |
 | 23 | added | 鄰居表容量（ARP／NDP gc_thresh） | **v03 新增；Bash 版沒有此項** |
 | 24 | added | 開機自動啟用對帳（auto／hotplug） | **v03 新增；Bash 版沒有此項** |
+| 25 | added | 網卡緩衝區與卸載功能 | **v03 新增；Bash 版沒有此項**。`ethtool -g` 的 RX/TX 環形緩衝區，以及 `ethtool -k` 的**全部**卸載功能（十項重點逐行顯示，其餘多欄排列） |
 
 ## 依賴
 
@@ -107,7 +108,7 @@ systemctl enable --now lldpd
 | 變數 | 預設值／優先序 | 用途 |
 |---|---|---|
 | `REPORT_DIR` | `/root` | 報告輸出目錄 |
-| `LIST_LIMIT` | `50` | 路由／鄰居等清單的顯示上限；超量會說明截去筆數 |
+| `LIST_LIMIT` | `50` | 路由與鄰居清單的顯示上限；超量會說明截去筆數 |
 | `SAMPLE_SECONDS` | `3` | RX/TX 取樣秒數 |
 | `BLINK_SECONDS` | `10` | LED 定位閃爍秒數 |
 | `PVE_CONF_ROOT` | `/etc/pve` | PVE 設定根目錄 |
@@ -169,10 +170,12 @@ install -d -m 0700 /var/log/pve-audit
 
 **驗證涵蓋**：
 
-- `--report` 完整報告在真機產出，20 個區段全部有輸出
+- **2026-08-05 追加**：`--report` 完整報告在真機產出，**目前的 21 個區段全部有輸出**——含「網卡緩衝區與卸載功能」在報告版面（固定寬度，與互動版面是**不同的一條路徑**）的產出（2026-08-03 首次驗證時為當時的 20 個區段）
 - 實體網卡各欄位取到真實數值（速率、Duplex、MTU、媒介、驅動、PCI 位址、韌體版本、自動協商），與 `ethtool` 原始輸出一致
 - 內建自檢 56 項全數通過；完整測試 686 條在該主機上全數通過（其中 3 條與符號連結防護有關的測試只有 Linux 跑得到）
 - VM/CT 網卡對應在有十餘個實際 guest 的環境下產出
+- **2026-08-04 追加（v03.009.000）**：完整測試 **761 條**在該主機全數通過且**略過 0 條**。這一點是關鍵——報告建檔的安全性判準（不跟隨符號連結、**父目錄也不跟隨**、POSIX 權限實際為 0600、撞名不覆寫）在開發機上**結構上執行不到**，那 5 條在該主機是**實際執行並通過**的。內建自檢的建檔旗標檢查也第一次取到真值而非 0
+- **2026-08-04 追加**：「網卡緩衝區與卸載功能」在該主機實際產出——`ethtool -k` 的 **63 項卸載功能全部顯示**，`ethtool -g` 的 6 個其餘欄位（含兩個真值）亦全部顯示
 
 **未涵蓋**（那台主機沒有這些設備，或沒有進入這些狀態）：
 

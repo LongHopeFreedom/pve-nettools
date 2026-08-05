@@ -206,6 +206,23 @@ def sort_nics(nics):
     return sorted(nics, key=lambda n: (n["vmid"], netid_index(n["netid"]), n["kind"]))
 
 
+# [CHANGE] 2026-08-05 待辦 #61／#66：VLAN tag 的排序鍵抽成模組層級的唯一真值。
+# 原本 guest_vlans() 內有一份 lambda，render/vlanreconcile.py 另有一份 _tag_key，
+# 而那一份的 docstring 宣稱「與 collect.pve.guest_vlans 同規則」卻用了
+# str.isdigit()——正是本檔 _DIGITS_RE 上方明文禁止的寫法。實測分歧：
+#   "２"（全形）render 那份判成數字排前、collect 這份判成非數字排後
+#   "²"（上標）render 那份 int() 直接 ValueError 炸穿整個區段
+# 兩份判準各自「讀起來都對」，只有拿同一組輸入餵兩邊才看得出來。
+def vlan_tag_key(tag):
+    """VLAN tag 的排序鍵：數字在前依數值排、非數字在後依字面排。
+
+    兩組的第二／第三個元素型別各自一致，不會出現 int 與 str 相比的 TypeError。
+    ★ MUST NOT 用 str.isdigit() 代替 _DIGITS_RE，理由見該常數上方的註解。
+    """
+    text = str(tag)
+    return (0, int(text), "") if _DIGITS_RE.match(text) else (1, 0, text)
+
+
 # ── 檔案來源 ──────────────────────────────────────────────────────────
 
 
@@ -305,7 +322,8 @@ class GuestConfReader(object):
 
         error = None
         if unreadable and not nics:
-            error = "；".join("%s：%s" % (u["path"], u["error"]) for u in unreadable)
+            # [CHANGE] 2026-08-05 待辦 #14：全形分號／冒號改半形（理由同 netconf.py）。
+            error = "; ".join("%s: %s" % (u["path"], u["error"]) for u in unreadable)
 
         return {
             "status": status,
@@ -316,12 +334,21 @@ class GuestConfReader(object):
 
     # ── 對帳原語（待辦 #4 之後由 bridge.py 組合成 VLAN 對帳）──────────
 
+    # [CHANGE] 2026-08-05 待辦 #61：回傳形狀由 {bridge: [tag]} 改為
+    # {bridge: {tag: [vmid, ...]}}。原本 render/vlanreconcile.py 因為「少了 vmid
+    # 就印不出 bash 的 20(VM 101 102)」而自己就地重組一份 _guest_vlans()，
+    # 繞過的理由寫著「它另有呼叫端，改它的回傳形狀會波及不相干的地方」——
+    # 實測那句是假的（產品碼零呼叫端），於是這個原語從此沒人用。
+    # 帶上 vmid 之後對帳端直接用它，掃 nics 與排序都只剩一份。
     def guest_vlans(self, nics=None):
-        """回傳 {bridge 名稱: 已排序的 VLAN 清單}，只算真的設了 tag 的網卡。
+        """回傳 {bridge 名稱: {tag: [vmid, ...]}}，只算真的設了 tag 的網卡。
 
         給「7. VLAN 對帳」用：guest 要求的 VLAN 是否落在 bridge 的 allowed 清單裡。
-        tag 非數字時原樣留著——bridge.vlan_allowed() 對非數字回 False，那正是對帳
-        該給的答案（設定有問題），在這裡先丟掉反而讓它從報告上消失。
+        tag 非數字時原樣留著——`bridge.vlan_in_list()` 對非數字回 False，那正是
+        對帳該給的答案（設定有問題），在這裡先丟掉反而讓它從報告上消失。
+
+        ★ tag 依 vlan_tag_key 排序（dict 自 3.7 起保序，專案要求 3.9 相容）；
+          vmid 依網卡列舉順序，對應 bash 的 `20(VM 101 102)`。
 
         nics 可傳入既有的清單，避免呼叫端已經拿過一次還要再讀一輪磁碟。
         """
@@ -332,12 +359,13 @@ class GuestConfReader(object):
         for nic in nics:
             if not nic["bridge"] or not nic["tag"]:
                 continue
-            table.setdefault(nic["bridge"], [])
-            if nic["tag"] not in table[nic["bridge"]]:
-                table[nic["bridge"]].append(nic["tag"])
-        # 數字在前依數值排、非數字在後依字面排。兩組的 key 型別各自一致，
-        # 不會出現 int 與 str 相比的 TypeError。
-        for bridge in table:
-            table[bridge].sort(
-                key=lambda t: (0, int(t), "") if _DIGITS_RE.match(t) else (1, 0, t))
-        return table
+            by_tag = table.setdefault(nic["bridge"], {})
+            # vmid 在 parse 階段無條件寫入（見 _parse_conf），故直接索引：
+            # 用 .get() 降級會把字串 "None" 當成 vmid 印進報告。
+            vmids = by_tag.setdefault(str(nic["tag"]), [])
+            vmid = str(nic["vmid"])
+            if vmid not in vmids:
+                vmids.append(vmid)
+        return {bridge: {tag: by_tag[tag]
+                         for tag in sorted(by_tag, key=vlan_tag_key)}
+                for bridge, by_tag in table.items()}

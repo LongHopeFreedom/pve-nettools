@@ -12,7 +12,7 @@
     bash 版早期把畫面與報告寫成兩套幾乎相同的碼，欄位很快就不同步了。
 """
 
-__version__ = "03.005.000"
+__version__ = "03.012.000"
 __author__ = "LeeFreedom"
 
 # 目標執行環境：PVE 7（Debian 11 / Python 3.9）以上。

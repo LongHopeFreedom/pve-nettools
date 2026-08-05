@@ -72,7 +72,8 @@ class TextConfReader(object):
                 text = fh.read()
         except OSError as exc:
             return {"status": STATUS_UNAVAILABLE, "lines": None,
-                    "error": "%s：%s" % (path, exc)}
+                    # [CHANGE] 2026-08-05 待辦 #14：全形冒號改半形（理由同 netconf.py）。
+                    "error": "%s: %s" % (path, exc)}
 
         lines = meaningful_lines(text)
         return {"status": STATUS_OK if lines else STATUS_EMPTY,

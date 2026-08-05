@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.005.000**.
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.012.000**.
 
 Repository: `github.com/LongHopeFreedom/pve-nettools`
 
@@ -14,7 +14,7 @@ License: MIT — see `LICENSE`
 | Path | Purpose |
 |---|---|
 | `pve-network-audit` | Python entry point |
-| `pve_nettools/` | Python package: 47 files, approximately 312 KB |
+| `pve_nettools/` | Python package: 48 files, approximately 378 KB |
 | `pve_nettools/collect/` | Collection subpackage |
 | `pve_nettools/render/` | Rendering subpackage |
 | `pve-network-audit.sh` | Bash v02.002.001 — **legacy fallback**, frozen and no longer updated |
@@ -40,7 +40,7 @@ You may also download the repository instead of cloning it. Run the audit as roo
 
 **Use `pve-network-audit` (Python v03) — it is the main version**, has more features (menu items 21–24 are new in v03), and is the only one that will receive further updates.
 
-`pve-network-audit.sh` is **Bash v02.002.001, frozen at that version and no longer updated**. It is kept in the repository for two reasons: to compare against the Python version, and to give you a fully verified fallback should you hit trouble in the situations the Python version has not yet been verified against on real hardware (bonds, SFP/QSFP modules, VLAN sub-interfaces — see "Verification limits" below).
+`pve-network-audit.sh` is **Bash v02.002.001, frozen at that version and no longer updated**. It is kept in the repository for two reasons: to compare against the Python version, and to give you a fully verified fallback should you hit trouble in any of the situations listed under "Verification limits" below. (That list lives in one place only; repeating it here would guarantee the two copies drift.)
 
 ## Usage
 
@@ -87,6 +87,7 @@ Choose a language at the startup prompt, press `L` in the menu to switch live, o
 | 22 | added | conntrack capacity | **New in v03; absent from the Bash version** |
 | 23 | added | Neighbour table capacity (ARP/NDP gc_thresh) | **New in v03; absent from the Bash version** |
 | 24 | added | Autostart reconciliation (auto/hotplug) | **New in v03; absent from the Bash version** |
+| 25 | added | NIC ring buffers and offload features | **New in v03; absent from the Bash version.** RX/TX ring buffers from `ethtool -g` and **every** offload feature from `ethtool -k` (ten key ones row by row, the rest in aligned columns) |
 
 ## Dependencies
 
@@ -107,7 +108,7 @@ systemctl enable --now lldpd
 | Variable | Default or priority | Purpose |
 |---|---|---|
 | `REPORT_DIR` | `/root` | Report output directory |
-| `LIST_LIMIT` | `50` | Display limit for routes, neighbours, and similar lists; truncation is reported |
+| `LIST_LIMIT` | `50` | Display limit for route and neighbour lists; truncation is reported |
 | `SAMPLE_SECONDS` | `3` | RX/TX sampling period in seconds |
 | `BLINK_SECONDS` | `10` | LED identification duration in seconds |
 | `PVE_CONF_ROOT` | `/etc/pve` | PVE configuration root |
@@ -169,10 +170,12 @@ Run it after changing decision logic. A non-zero return code indicates a failed 
 
 **Verified coverage:**
 
-- The full `--report` was produced on real hardware; all 20 sections emitted output
+- **Added 2026-08-05:** the full `--report` was produced on real hardware and **all 21 sections emitted output**, including "NIC ring buffers and offload features" in the report layout (fixed width, a **different code path** from the interactive one). The first run on 2026-08-03 covered the 20 sections that existed then
 - Physical NIC fields carried real values (speed, duplex, MTU, media, driver, PCI address, firmware version, auto-negotiation) and matched raw `ethtool` output
 - All 56 built-in self-test checks passed; all 686 tests passed on that host (3 of them, covering symlink protection, can only run on Linux)
 - The VM/CT interface mapping was produced in an environment with a dozen or so live guests
+- **Added 2026-08-04 (v03.009.000):** all **761** tests passed on that host with **zero skipped**. That matters: the report-creation safety criteria (do not follow a symlink, **do not follow a symlinked parent directory**, real POSIX mode 0600, never overwrite on a filename collision) cannot execute at all on the development machine; those 5 tests really ran and passed there. The built-in self-test's create-flag check also received a real value instead of 0 for the first time
+- **Added 2026-08-04:** "NIC ring buffers and offload features" was produced on that host—all **63** offload features from `ethtool -k` were displayed, as were the 6 remaining `ethtool -g` fields (two of which carry real values)
 
 **Not covered** (that host has no such hardware, or never entered these states):
 

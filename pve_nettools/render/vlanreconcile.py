@@ -7,11 +7,17 @@
   所以它的錯誤方向有不對稱的代價：把「不通」判成「相符」會讓人去查別的地方，
   而反過來只是多看一眼。bash 的取法是——查無此 VLAN 就算未放行，這裡照做。
 
-★ 對帳的兩個原語都已在 collect 層：
+★ 對帳的原語全都已在 collect 層：
     collect.bridge.BridgeReader.allowed_vlans(port)  去標記後壓成範圍的放行清單
     collect.bridge.vlan_in_list(vid, list)           範圍比對，不展開成逐個值
-  MUST NOT 在這一層自己再寫一套比對。bash 的註解記過為什麼不展開：`2-4090`
-  展開要 171 ms、建 4090 個鍵再花 586 ms，而對帳只需查 guest 用到的那幾個。
+    collect.pve.GuestConfReader.guest_vlans(nics)    {bridge: {tag: [vmid]}}
+    collect.pve.vlan_tag_key(tag)                    tag 排序鍵
+  MUST NOT 在這一層自己再寫一套——**比對、分組、排序都算**。
+  [CHANGE] 2026-08-05 待辦 #61／#66：原本這條只寫了「比對」，於是分組與排序
+  各被就地重寫一份；其中排序那份用 str.isdigit()，遇到上標數字（tag="²"）
+  int() 會拋 ValueError 炸穿整個區段，而 764 條測試全綠——沒有 fixture 用過它。
+  bash 的註解記過為什麼不展開範圍：`2-4090` 展開要 171 ms、建 4090 個鍵再花
+  586 ms，而對帳只需查 guest 用到的那幾個。
 """
 
 from ..collect import STATUS_OK, STATUS_UNAVAILABLE
@@ -54,13 +60,15 @@ class VlanReconcileSection(Section):
         if not nics:
             return {"reason": "no_guest", "rows": []}
 
-        used_by = self._guest_vlans(nics)
+        # [CHANGE] 2026-08-05 待辦 #61：改用 collect 層的原語，不再就地重組。
+        used_by = self.guest.guest_vlans(nics)
         rows = []
         for bridge in sorted(uplinks):
             ports, allowed = uplinks[bridge]
             used = []
             missing = []
-            for tag in sorted(used_by.get(bridge, {}), key=_tag_key):
+            # guest_vlans() 已依 vlan_tag_key 排好序且 dict 保序，此處不再自己排。
+            for tag in used_by.get(bridge, {}):
                 used.append(tag)
                 if not vlan_in_list(tag, allowed):
                     missing.append(t("vlanrec.missing_item", vid=tag,
@@ -99,28 +107,9 @@ class VlanReconcileSection(Section):
                 found[bridge] = (ports, ",".join(allowed))
         return found
 
-    @staticmethod
-    def _guest_vlans(nics):
-        """{bridge: {tag: [vmid, ...]}}。
-
-        ★ 這裡要的是**每個 (bridge, tag) 各由哪些 VM 使用**，而
-          `GuestConfReader.guest_vlans()` 只回 {bridge: [tag]}——少了 vmid 就印
-          不出 bash 的「20(VM 101 102)」。故在此就地組合，而不是去改那個原語：
-          它另有呼叫端，改它的回傳形狀會波及不相干的地方。
-        """
-        table = {}
-        for nic in nics:
-            bridge = nic.get("bridge")
-            tag = nic.get("tag")
-            if not bridge or not tag:
-                continue
-            by_tag = table.setdefault(bridge, {})
-            vmids = by_tag.setdefault(str(tag), [])
-            vmid = str(nic.get("vmid"))
-            if vmid not in vmids:
-                vmids.append(vmid)
-        return table
-
+    # [CHANGE] 2026-08-05 待辦 #61：移除 _guest_vlans()。它與
+    # collect.pve.GuestConfReader.guest_vlans() 做同一件事（掃 nics 依 bridge
+    # 分組 tag），差別只在有沒有帶 vmid；已把 vmid 加進那個原語，此處直接用。
     def is_empty(self, data):
         return not data["rows"]
 
@@ -178,6 +167,8 @@ class VlanReconcileSection(Section):
         return lines
 
 
-def _tag_key(tag):
-    """數字在前依數值排、非數字在後依字面排（與 collect.pve.guest_vlans 同規則）。"""
-    return (0, int(tag), "") if str(tag).isdigit() else (1, 0, str(tag))
+# [CHANGE] 2026-08-05 待辦 #66：移除 _tag_key()。它的 docstring 宣稱「與
+# collect.pve.guest_vlans 同規則」，實際上用 str.isdigit() 而那邊用 _DIGITS_RE
+# （^[0-9]+$）。實測 tag="２"（全形）兩份排序位置不同、tag="²"（上標）這一份
+# int() 直接拋 ValueError。排序鍵現已是 collect.pve.vlan_tag_key 一份。
+# ★ 宣稱「與 X 同規則」的註解本身沒有守衛——它讀起來完全正確。

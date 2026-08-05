@@ -36,6 +36,7 @@ from .nic import HealthSection, NicSection
 # [CHANGE] 2026-08-02 待辦 #17：MUST 排在 .nic 之後——module 從 nic 取用
 # 共用的媒介文字轉換，順序顛倒會是循環匯入。
 from .module import ModuleSection
+from .ringoffload import RingOffloadSection
 from .sysctl import ConntrackSection, NeighSection, SysctlSection
 # [CHANGE] 2026-08-02 選單 5～17 十一項（待辦 #16／#17／#18）。
 from .bond import BondSection
@@ -67,6 +68,7 @@ __all__ = [
     "NicSection",
     "OvsSection",
     "PersistentSection",
+    "RingOffloadSection",
     "SdnSection",
     "SysctlSection",
     "VlanReconcileSection",

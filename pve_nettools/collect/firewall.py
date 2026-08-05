@@ -117,7 +117,8 @@ class FirewallReader(object):
             return {
                 "status": STATUS_UNAVAILABLE,
                 "data": None,
-                "error": "%s：%s" % (path, exc),
+                # [CHANGE] 2026-08-05 待辦 #14：全形冒號改半形（同 netconf.py 的理由）。
+                "error": "%s: %s" % (path, exc),
             }
 
         data = parse_fw(text)
@@ -176,6 +177,27 @@ class FirewallReader(object):
                     break
         result["state"] = state
         return result
+
+    # [CHANGE] 2026-08-05 待辦 #15：本專案的目的是把 PVE 原生 GUI 看不到的東西
+    #   擺到 CLI 上（使用者 2026-08-05 裁決）。GUI 的 Firewall 分頁給得出的是
+    #   **設定**；「這份設定編譯成什麼規則」與「哪個網段被判定為本地」，據我所知
+    #   只有 CLI 有。
+    # ★★ **「GUI 上沒有這兩者」這一句我沒有實測**——開發機沒有 PVE，我看不到那個
+    #    介面。它是依 PVE 文件與 GUI 結構推出來的，**不是量出來的**。
+    #    ⇒ 已列為真機驗證的確認項（手冊步驟 8）。若實測發現 GUI 其實有，這一段的
+    #      **正當性就要重新評估**——與 #66 那種「修法不依賴可達性」的情況不同，
+    #      本項的理由完全建立在這個前提上，不能假裝它只是附註。
+    # ★★ 兩者都**原樣取回、不解析**，體例同 bash 版印 .fw 原文：解析器要寫對得
+    #    先有真機輸出樣本，而原樣輸出不需要，且原文本身就是可用的診斷資料。
+    #    ⇒ 這裡刻意只做 run_command，不抽欄位——沒有樣本卻定義欄位，等於憑推測
+    #      決定要丟掉什麼，而**被丟掉的東西不會有任何症狀**。
+    # ★ 兩支子指令在較舊的 PVE 上可能不存在；run_command 已經把「指令不存在」
+    #   與「指令失敗」分成不同的 failure，render 端據此顯示，不會假裝查過。
+    def compile_rules(self):
+        return run_command(self.run_fn, ["pve-firewall", "compile"])
+
+    def localnet(self):
+        return run_command(self.run_fn, ["pve-firewall", "localnet"])
 
     def read(self):
         cluster = self.cluster()

@@ -92,6 +92,7 @@ MESSAGES = {
         "menu.conntrack": "conntrack 連線追蹤容量",
         "menu.neigh": "鄰居表容量（ARP／NDP gc_thresh）",
         "menu.autostart": "開機自動啟用對帳（auto／hotplug）",
+        "menu.ring_offload": "網卡緩衝區與卸載功能",
         "menu.exit": "離開",
         # [CHANGE] 2026-08-02 待辦 #25：選單內切換語系。
         # ★ native_name 用該語言自己的文字寫，且由各語系自行宣告——這樣新增
@@ -129,7 +130,7 @@ MESSAGES = {
         #          實作之後它有了真正的呼叫端（app.Readers.list_limit ⇒
         #          render/iprouting.py 的 limited()），繼續不列反而會讓 usage
         #          對帳守門員的另一個方向轉紅。
-        "cli.usage_env": "環境變數：\n  REPORT_DIR        報告輸出目錄（預設 /root）\n  LIST_LIMIT        路由／鄰居等清單的顯示上限（預設 50，超量會明說截掉幾筆）\n  SAMPLE_SECONDS    RX/TX 取樣秒數（預設 3）\n  BLINK_SECONDS     LED 定位閃爍秒數（預設 10）\n  COMMAND_TIMEOUT   外部指令逾時秒數（預設 15；逾時會明說是逾時，不會說成未安裝）\n  PVE_CONF_ROOT     PVE 設定根目錄（預設 /etc/pve）\n  PVE_AUDIT_LANG    介面語言 zh／en（PVE 的 locale 多為 C，不設會是英文）\n  NO_PAGER          設為 1 時不使用 less／more 分頁\n  TERM_WIDTH        強制指定版面寬度，最優先\n  COLUMNS           版面寬度來源之一（優先序次於上一項）\n  LC_ALL／LC_MESSAGES／LANG    標準 locale，語言推導的後備",
+        "cli.usage_env": "環境變數：\n  REPORT_DIR        報告輸出目錄（預設 /root）\n  LIST_LIMIT        路由與鄰居清單的顯示上限（預設 50，超量會明說截掉幾筆）\n  SAMPLE_SECONDS    RX/TX 取樣秒數（預設 3）\n  BLINK_SECONDS     LED 定位閃爍秒數（預設 10）\n  COMMAND_TIMEOUT   外部指令逾時秒數（預設 15；逾時會明說是逾時，不會說成未安裝）\n  PVE_CONF_ROOT     PVE 設定根目錄（預設 /etc/pve）\n  PVE_AUDIT_LANG    介面語言 zh／en（PVE 的 locale 多為 C，不設會是英文）\n  NO_PAGER          設為 1 時不使用 less／more 分頁\n  TERM_WIDTH        強制指定版面寬度，最優先\n  COLUMNS           版面寬度來源之一（優先序次於上一項）\n  LC_ALL／LC_MESSAGES／LANG    標準 locale，語言推導的後備",
         "cli.usage_note": "注意：報告內含 corosync 叢集拓撲與節點 IP、防火牆規則與 /etc/hosts，\n      故以 0600 建立。若改用共用目錄存放，請自行確認目錄權限。",
         "cli.usage_deps": "依賴：\n  必要  iproute2（ip、bridge）\n  建議  ethtool（速率／Duplex／媒介／韌體／LED）\n        lldpd（交換器與 Port 對應）\n  選用  openvswitch-switch（僅 OVS 環境需要）",
 
@@ -146,6 +147,8 @@ MESSAGES = {
         "media.dac": "DAC 銅纜",
         "media.aoc": "AOC 主動線纜",
         "media.backplane": "背板介面",
+        "media.aui": "AUI 介面",
+        "media.mii": "MII 介面",
         "media.unknown": "未知",
 
         # ── 實體網卡表 ──
@@ -175,6 +178,18 @@ MESSAGES = {
         "module.tx_power": "光發射功率",
         "module.rx_power": "光接收功率",
         "module.none": "沒有偵測到可讀取的 SFP/QSFP 模組（純 RJ45 電口網卡屬正常）。",
+        "ringoffload.ring": "緩衝區（目前值／上限）",
+        "ringoffload.ring_mini": "RX Mini",
+        "ringoffload.ring_jumbo": "RX Jumbo",
+        "ringoffload.ring_pair": "{current}／{maximum}",
+        "ringoffload.ring_summary": "RX {rx}，TX {tx}",
+        "ringoffload.ring_unavailable": "無法取得 ring buffer 資訊。",
+        "ringoffload.offload": "卸載功能",
+        "ringoffload.offload_unavailable": "無法取得 offload feature 資訊。",
+        "ringoffload.fixed": "{value} [fixed]",
+        "ringoffload.rest": "其餘 {count} 項（本張卡共 {total} 項）：",
+        "ringoffload.ring_extra": "其他 ring 參數（{count} 項）：",
+        "ringoffload.lro_note": "LRO 會將接收到的封包重組成大封包；經由 bridge 或路由轉發的流量無法還原成原本的封包序列，因此在做轉發的主機上通常應該關閉。",
         # [CHANGE] 2026-08-02 待辦 #26：移除 nic.autostart／nic.comment。
         # ★ 這兩個 key 的存在曾被當成「規格要這兩欄」的證據（見 render/nic.py
         #   舊註解），但 bash 版的 render_physical_nics 從不讀 interfaces。
@@ -276,9 +291,12 @@ MESSAGES = {
         "conntrack.max": "上限",
         "conntrack.usage": "使用率",
         "conntrack.warn": "★ 使用率偏高——滿了會表現成隨機丟連線",
+        # [CHANGE] 2026-08-05 待辦 #14：讀不到時的說明改由 render 層出，訊息才有語言。
+        "conntrack.unavailable": "無法讀取 conntrack 核心參數，模組可能尚未載入",
         "neigh.current": "目前筆數",
         "neigh.thresh": "回收門檻",
         "neigh.warn": "★ 接近 gc_thresh3——超過會開始隨機不通",
+        "neigh.unavailable": "無法讀取 IPv4 鄰居表與核心門檻",
 
         # [CHANGE] 2026-08-02 pager、LED 與自檢文案集中管理，避免雙語介面靜默分岔。
         # ── Pager ──
@@ -509,6 +527,12 @@ MESSAGES = {
         "firewall.not_found": "找不到 pve-firewall，此主機可能不是 Proxmox VE。",
         "firewall.file_title": "── {path} ──",
         "firewall.host_title": "── 本節點 host.fw ──",
+        # [CHANGE] 2026-08-05 待辦 #15：GUI 的 Firewall 分頁只給得出「設定」；
+        #   設定編譯成什麼、哪個網段被當成本地，只有 CLI 看得到。
+        "firewall.compile_title": "── pve-firewall compile（設定編譯後的實際規則）──",
+        "firewall.compile_failed": "無法取得編譯後的規則（此 PVE 版本可能沒有 compile 子指令）。",
+        "firewall.localnet_title": "── pve-firewall localnet（被視為本地網段的判定）──",
+        "firewall.localnet_failed": "無法取得本地網段判定。",
 
         # ── 選單 16：LLDP ──
         "lldp.not_installed": "尚未安裝 lldpd，無法查詢交換器與 Port。",
@@ -589,6 +613,7 @@ MESSAGES = {
         "menu.conntrack": "conntrack capacity",
         "menu.neigh": "Neighbour table capacity (ARP/NDP gc_thresh)",
         "menu.autostart": "Autostart reconciliation (auto/hotplug)",
+        "menu.ring_offload": "NIC ring buffers and offload features",
         "menu.exit": "Exit",
         # [CHANGE] 2026-08-02 待辦 #25：與 zh-TW 段同一批。
         "lang.native_name": "English",
@@ -631,6 +656,8 @@ MESSAGES = {
         "media.dac": "DAC copper",
         "media.aoc": "AOC active",
         "media.backplane": "Backplane",
+        "media.aui": "AUI interface",
+        "media.mii": "MII interface",
         "media.unknown": "Unknown",
 
         # ── physical NIC table ──
@@ -659,6 +686,18 @@ MESSAGES = {
         "module.tx_power": "Laser output power",
         "module.rx_power": "Receiver optical power",
         "module.none": "No readable SFP/QSFP module detected (normal for RJ45 copper NICs).",
+        "ringoffload.ring": "Ring buffers (current/maximum)",
+        "ringoffload.ring_mini": "RX Mini",
+        "ringoffload.ring_jumbo": "RX Jumbo",
+        "ringoffload.ring_pair": "{current}/{maximum}",
+        "ringoffload.ring_summary": "RX {rx}, TX {tx}",
+        "ringoffload.ring_unavailable": "Ring buffer information is unavailable.",
+        "ringoffload.offload": "Offload features",
+        "ringoffload.offload_unavailable": "Offload feature information is unavailable.",
+        "ringoffload.fixed": "{value} [fixed]",
+        "ringoffload.rest": "The remaining {count} features ({total} on this NIC):",
+        "ringoffload.ring_extra": "Other ring parameters ({count}):",
+        "ringoffload.lro_note": "LRO combines received packets into large packets; traffic forwarded through a bridge or router cannot be restored to the original packet sequence, so LRO should usually be disabled on forwarding hosts.",
         # [CHANGE] 2026-08-02 待辦 #26：與 zh-TW 段同一批（移除 nic.autostart／nic.comment）。
         "nic.none_found": "No physical NIC found.",
         "nic.sampling": "Sampling RX/TX counters for {sec}s...",
@@ -736,9 +775,12 @@ MESSAGES = {
         "conntrack.max": "Max",
         "conntrack.usage": "Usage",
         "conntrack.warn": "* High usage - once full, connections are dropped at random",
+        # [CHANGE] 2026-08-05 待辦 #14：讀不到時的說明改由 render 層出，訊息才有語言。
+        "conntrack.unavailable": "Cannot read conntrack kernel parameters - the module may not be loaded",
         "neigh.current": "Entries",
         "neigh.thresh": "GC thresholds",
         "neigh.warn": "* Approaching gc_thresh3 - beyond it, hosts start becoming unreachable at random",
+        "neigh.unavailable": "Cannot read the IPv4 neighbour table or kernel thresholds",
 
         # [CHANGE] 2026-08-02 keep pager, LED, and self-test text aligned across both languages.
         # ── pager ──
@@ -970,6 +1012,11 @@ MESSAGES = {
         "firewall.not_found": "pve-firewall was not found; this host may not be Proxmox VE.",
         "firewall.file_title": "-- {path} --",
         "firewall.host_title": "-- host.fw of this node --",
+        # [CHANGE] 2026-08-05 待辦 #15：see the zh-TW side for the rationale.
+        "firewall.compile_title": "-- pve-firewall compile (ruleset compiled from the config) --",
+        "firewall.compile_failed": "Could not retrieve the compiled ruleset; this PVE version may not have the compile subcommand.",
+        "firewall.localnet_title": "-- pve-firewall localnet (which subnet counts as local) --",
+        "firewall.localnet_failed": "Could not retrieve the local network decision.",
 
         # ── menu 16: LLDP ──
         "lldp.not_installed": "lldpd is not installed; cannot query the switch and port.",

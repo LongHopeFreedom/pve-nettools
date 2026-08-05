@@ -290,14 +290,14 @@ class BridgeReader:
             return None
         return compress_vlan_list(strip_tags(entry["vlans"]))
 
-    def vlan_allowed(self, port, vid):
-        """★ port 不存在時回 False——「這個 port 沒有放行任何 VLAN」與「查不到這個
-        port」在對帳語意上都不該算放行。要區分請先用 allowed_vlans() 判 None。
-        """
-        allowed = self.allowed_vlans(port)
-        if allowed is None:
-            return False
-        return vlan_in_list(vid, allowed)
-
+    # [CHANGE] 2026-08-05 待辦 #61：移除 vlan_allowed(port, vid)。它問的是
+    # 「**單一** port 有沒有放行某個 VLAN」，而唯一的對帳場景（render/
+    # vlanreconcile.py）問的是「一座 bridge 的**所有** uplink port 聯集起來有沒有
+    # 放行」——那邊先把各 port 的 allowed_vlans() 串成一個字串再交給
+    # vlan_in_list()，一次聯集對多個 tag 重用。兩者語意不同，故它結構上用不到
+    # 這個封裝，產品碼零呼叫端。
+    # ★ 它原本的 docstring 記著一條仍然有效的指引，移到這裡保存：
+    #   allowed_vlans() 回 None 代表「查不到這個 port」，與「查得到但沒放行任何
+    #   VLAN」是兩回事；要分辨請自己判 None，不要靠布林回傳值。
     def available(self):
         return self.vlan_show()["status"] == STATUS_OK

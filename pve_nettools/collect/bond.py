@@ -105,7 +105,9 @@ class BondReader(object):
             if text.strip():
                 result = {"status": STATUS_OK, "data": parse_bond(text), "error": None}
             else:
-                result = {"status": STATUS_EMPTY, "data": {}, "error": None}
+                # [CHANGE] 2026-08-04 待辦 #39：空檔也維持解析結果的完整形狀；直接
+                # 重用 parser，讓 _BOND_FIELDS 日後增減時不會在此形成第二份欄位清單。
+                result = {"status": STATUS_EMPTY, "data": parse_bond(text), "error": None}
         self._cache[name] = result
         return result
 

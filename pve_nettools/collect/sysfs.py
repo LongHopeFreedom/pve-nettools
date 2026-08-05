@@ -178,12 +178,27 @@ class SysfsReader:
         return self.bridge_attr(bridge, "stp_state", default="0") == "1"
 
 
+# [CHANGE] 2026-08-05 待辦 #66：ASCII 數字集合。原本這裡用 ch.isdigit()，
+# 而 collect/pve.py 與 collect/bridge.py 兩處都已明文記載「MUST NOT 用
+# str.isdigit()」——它對上標與全形數字也回 True，隨後的 int() 會拋 ValueError。
+# 實測 _natural_key("eth²") 直接拋 ValueError，而網卡清單排序在整份報告的最前段。
+# ★ 可達性**本棒未實測**（開發機是 Windows，建不了 Linux 介面）：介面名來自
+#   /sys/class/net/ 的目錄名，依核心 dev_valid_name() 的規則（只擋 '/'、空白、
+#   空字串與長度）**推論** `ip link add name eth² type dummy` 應可成立——
+#   那是推論不是量測，MUST NOT 當成已驗證。已列入真機驗證手冊的待驗項。
+# ★★ 但修法的正當性**不依賴可達性**：判斷用 isdigit()、轉換用 int()，是拿
+#   **兩套不同的數字判準**處理同一份資料，它們對同一個輸入給出不一致的答案
+#   （"２" 一個判成數字一個判成非數字；"²" 一個判成數字另一個直接拋例外）。
+#   那本身就是缺陷，與有沒有人真的建出那種介面無關。
+_ASCII_DIGITS = frozenset("0123456789")
+
+
 def _natural_key(name):
     """讓 eno2 排在 eno10 前面。純字典序會把 eno10 排到 eno2 之前。"""
     parts = []
     digits = ""
     for ch in name:
-        if ch.isdigit():
+        if ch in _ASCII_DIGITS:
             digits += ch
         else:
             if digits:

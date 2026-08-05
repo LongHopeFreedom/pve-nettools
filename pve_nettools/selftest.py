@@ -266,8 +266,13 @@ def _checks_report_perm():
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, "report.txt")
 
-            def opener(target, flags, mode):
-                handle = os.open(target, flags, mode)
+            # [CHANGE] 2026-08-04 v03.009.000：MUST 收 dir_fd。真機（Linux）抓到的
+            #   缺陷——待辦 #50 讓 write_report() 在支援 dir_fd 的平台改以
+            #   `opener(basename, flags, mode, dir_fd=…)` 呼叫，而這個注入點只收
+            #   三個位置參數 ⇒ **在目標平台上 TypeError**。
+            #   ★ 開發機（Windows）不支援 dir_fd，那條分支從不執行，故本機全綠。
+            def opener(target, flags, mode, dir_fd=None):
+                handle = os.open(target, flags, mode, dir_fd=dir_fd)
                 recorded.append(("open", mode, flags, handle))
                 return handle
 
