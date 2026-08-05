@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.012.000**.
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.013.000**.
 
 Repository: `github.com/LongHopeFreedom/pve-nettools`
 
@@ -17,7 +17,6 @@ License: MIT — see `LICENSE`
 | `pve_nettools/` | Python package: 48 files, approximately 378 KB |
 | `pve_nettools/collect/` | Collection subpackage |
 | `pve_nettools/render/` | Rendering subpackage |
-| `pve-network-audit.sh` | Bash v02.002.001 — **legacy fallback**, frozen and no longer updated |
 | `CHANGELOG.md` | Version history |
 | `LICENSE` | MIT licence |
 
@@ -36,11 +35,15 @@ sudo ./pve-network-audit
 
 You may also download the repository instead of cloning it. Run the audit as root.
 
-### Which one to use
+### About versions
 
-**Use `pve-network-audit` (Python v03) — it is the main version**, has more features (menu items 21–24 are new in v03), and is the only one that will receive further updates.
+**Use `pve-network-audit` (Python v03) — as of v03.013.000 it is the only version published in this repository**, has more features (menu items 21–24 are new in v03), and is the only one that will receive further updates.
 
-`pve-network-audit.sh` is **Bash v02.002.001, frozen at that version and no longer updated**. It is kept in the repository for two reasons: to compare against the Python version, and to give you a fully verified fallback should you hit trouble in any of the situations listed under "Verification limits" below. (That list lives in one place only; repeating it here would guarantee the two copies drift.)
+**The Bash version is no longer shipped as of v03.013.000.** `pve-network-audit.sh` (Bash v02.002.001, frozen at that version and no longer updated) has been removed from the latest release.
+
+> ⚠ **This means the situations listed under "Verification limits" below no longer have an older version in this repository to fall back to.** Please read that section before adopting this tool.
+>
+> If you do need the Bash version, it is still obtainable: this removal applies **only to the latest version and does not rewrite existing history** — the file is present in every commit up to and including `v03.012.000`.
 
 ## Usage
 

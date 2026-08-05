@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.012.000**。
+Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.013.000**。
 
 儲存庫：`github.com/LongHopeFreedom/pve-nettools`
 
@@ -17,7 +17,6 @@ Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、�
 | `pve_nettools/` | Python 套件，共 48 個檔案、約 378 KB |
 | `pve_nettools/collect/` | 資料收集子套件 |
 | `pve_nettools/render/` | 輸出呈現子套件 |
-| `pve-network-audit.sh` | Bash v02.002.001 —— **舊版備援**，凍結不再更新 |
 | `CHANGELOG.md` | 版本沿革 |
 | `LICENSE` | MIT 授權條款 |
 
@@ -36,11 +35,15 @@ sudo ./pve-network-audit
 
 也可以直接下載儲存庫。一般盤查請以 root 執行。
 
-### 該用哪一個
+### 版本說明
 
-**請用 `pve-network-audit`（Python v03）——它是主線版本**，功能較多（選單 21–24 是 v03 新增的），也是後續唯一會更新的版本。
+**請用 `pve-network-audit`（Python v03）——自 v03.013.000 起，它是本儲存庫唯一發布的版本**，功能較多（選單 21–24 是 v03 新增的），也是後續唯一會更新的版本。
 
-`pve-network-audit.sh` 是 **Bash v02.002.001，已凍結於該版不再更新**，保留在儲存庫裡有兩個用途：與 Python 版對照，以及在下方「驗證限度」列出的未涵蓋情境遇到問題時，還有一個已完整驗證過的版本可以退回使用。（未涵蓋的清單只寫在那一節，這裡不重複——兩份清單遲早會漂移。）
+**v03.013.000 起不再隨附 Bash 版。** 先前一併發布的 `pve-network-audit.sh`（Bash v02.002.001，已凍結不再更新）已自最新版移除。
+
+> ⚠ **這代表下方「驗證限度」列出的未涵蓋情境，本儲存庫不再提供可退回使用的舊版。** 請連同那一節一起評估再決定是否採用。
+>
+> 若你確實需要 Bash 版，它仍然取得得到：本次移除**只作用於最新版，未改寫既有歷史**，`v03.012.000` 以前的提交紀錄裡都還有那個檔。
 
 ## 用法
 
