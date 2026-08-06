@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.013.000**。
+Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.014.000**。
 
 儲存庫：`github.com/LongHopeFreedom/pve-nettools`
 

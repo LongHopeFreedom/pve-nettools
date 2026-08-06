@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.013.000**.
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.014.000**.
 
 Repository: `github.com/LongHopeFreedom/pve-nettools`
 

@@ -20,7 +20,7 @@
   586 ms，而對帳只需查 guest 用到的那幾個。
 """
 
-from ..collect import STATUS_OK, STATUS_UNAVAILABLE
+from ..collect import STATUS_UNAVAILABLE
 from ..collect.bridge import is_guest_iface, vlan_in_list
 from ..i18n import t
 # [CHANGE] 2026-08-03 窄版標題改走共用 helper，逐值重用表格 colorizer。
@@ -45,14 +45,36 @@ class VlanReconcileSection(Section):
         show = self.bridge.vlan_show()
         # ★ 三種「沒得對帳」在 bash 是三段不同的文字，MUST 分辨：
         #   unavailable ⇒ 沒有 bridge 指令
-        #   empty       ⇒ 有指令但沒有 VLAN-aware bridge
-        #   有資料但無 uplink ⇒ 第三種（下面 reason="no_uplink"）
+        #   沒有 vlan_filtering=1 的 bridge ⇒ 沒有 VLAN-aware bridge
+        #   有 VLAN-aware bridge 但無 uplink ⇒ 第三種（下面 reason="no_uplink"）
         if show["status"] == STATUS_UNAVAILABLE:
             return {"reason": "no_bridge_cmd", "rows": []}
-        if show["status"] != STATUS_OK:
+
+        # [CHANGE] 2026-08-06 待辦 #76：no_vlan_aware 改由 sysfs 判，與挑 uplink
+        # 共用同一份清單。
+        # WHY: 原本這裡判 `show["status"] != STATUS_OK`（＝`bridge vlan show`
+        #   有沒有可解析的輸出），而 `_uplinks()` 判的是
+        #   `/sys/class/net/<br>/bridge/vlan_filtering`——**同一件事兩個資料
+        #   來源**。`bridge vlan show` 對 vlan_filtering=0 的 bridge 仍會列出
+        #   port，於是「有 bridge 但一座都沒開 VLAN aware」（PVE 未勾 VLAN
+        #   aware 的常態）落到 no_uplink，印出一句**預設了「有 VLAN-aware
+        #   Bridge」**的訊息，而實際成因是一座都沒有。兩者指向的排查方向不同，
+        #   而這是整份工具唯一會下判定的區段（見檔頭）。
+        # WHAT: 先算出 vlan-aware bridge 清單，空 ⇒ no_vlan_aware；非空才挑
+        #   uplink。清單只讀一次 vlan_filtering，兩個判定共用 ⇒ **結構上不可能
+        #   再分歧**，不是讓兩份判準碰巧一致。
+        # ★ 這個修法的正當性不依賴「vlan_filtering=0 時 bridge vlan show 有沒有
+        #   輸出」這個未在真機實測的前提：「VLAN-aware」的定義就在
+        #   vlan_filtering，用它判至少不會比用指令輸出差。有輸出 ⇒ 修正誤判；
+        #   沒輸出 ⇒ 兩種判準結論相同、行為零變化。
+        # ★ 依賴具名：sysfs 讀不到 /sys/class/net 時 bridges() 回空 ⇒ 判
+        #   no_vlan_aware。該情境要求「bridge 指令可用且有輸出」而「/sys 讀不
+        #   到」同時成立，在 Linux 上兩者同源；**本棒未實測其可達性**。
+        vlan_aware = self._vlan_aware_bridges()
+        if not vlan_aware:
             return {"reason": "no_vlan_aware", "rows": []}
 
-        uplinks = self._uplinks()
+        uplinks = self._uplinks(vlan_aware)
         if not uplinks:
             return {"reason": "no_uplink", "rows": []}
 
@@ -82,17 +104,26 @@ class VlanReconcileSection(Section):
             })
         return {"reason": None, "rows": rows}
 
-    def _uplinks(self):
+    # [CHANGE] 2026-08-06 待辦 #76：抽出來的唯一一處 vlan_filtering 讀取點。
+    # ★ 它同時是 no_vlan_aware 的判準與 uplink 的候選集合。抽出來之前這兩件事
+    #   各有各的資料來源，而**只有其中一條分支會被寫進測試**。
+    def _vlan_aware_bridges(self):
+        """開了 vlan_filtering 的 bridge 清單（＝「VLAN-aware」的定義所在）。"""
+        return [bridge for bridge in self.sysfs.bridges()
+                if self.sysfs.vlan_filtering(bridge)]
+
+    def _uplinks(self, bridges):
         """{bridge: (uplink port 清單, 放行 VLAN 清單串接)}。
 
         ★ 「uplink」的定義沿用 bash：這座 bridge 的 brif 成員中，**不是** guest
           動態介面（tap/veth/fwbr/fwpr/fwln）、也不是 bridge 自己、且在
           `bridge vlan show` 裡查得到放行清單的 port。
+
+        [CHANGE] 2026-08-06 待辦 #76：候選 bridge 由呼叫端傳入，此處不再自己
+        讀 vlan_filtering——同一份清單餵給兩個判定，才不會再分歧。
         """
         found = {}
-        for bridge in self.sysfs.bridges():
-            if not self.sysfs.vlan_filtering(bridge):
-                continue
+        for bridge in bridges:
             ports = []
             allowed = []
             for port in self.sysfs.bridge_ports(bridge):
