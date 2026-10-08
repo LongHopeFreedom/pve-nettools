@@ -49,6 +49,8 @@ MESSAGES = {
         "app.enabled": "啟用",
         "app.disabled": "停用",
         "app.unknown": "未知",
+        # [CHANGE] 2026-10-07 v03.020.000：未接線時速率／Duplex 的顯示（ethtool 回 Unknown! 的情形）。
+        "app.dash": "—",
         # [CHANGE] 2026-08-02 版面的鍵值分隔符。原本在程式碼裡硬編碼成全形「：」，
         #          於是英文介面會印出 `Hostname：pve-node-01`——半形語境混一個
         #          全形標點。
@@ -68,7 +70,7 @@ MESSAGES = {
         "menu.group_overall": "整體",
         "menu.group_added": "Python 版新增（bash 版沒有的項目）",
         "menu.not_implemented": "尚未實作（項目 #{todo}）",
-        "menu.nic_status": "實體網卡狀態與 RX/TX",
+        "menu.nic_status": "網卡與虛擬介面狀態（含 RX/TX）",
         "menu.nic_health": "網卡健康：Link 抖動、錯誤與丟包、韌體",
         "menu.nic_modules": "SFP/QSFP 模組明細",
         "menu.nic_led": "實體網卡 LED 定位",
@@ -242,6 +244,21 @@ MESSAGES = {
         # ── 實體網卡型號（2026-10-06 v03.018.000 新增；資料來源 lspci）──
         "nic.model": "型號",
         "nic.model_line": "型號：{nics} — {model}",
+
+        # ── 選單 1 分區與橋接關係（2026-10-08 v03.021.000 新增）──
+        "nic.zone_physical": "實體網卡",
+        "nic.zone_virtual": "虛擬介面（bond、bridge、VLAN）",
+        "nic.zone_virtual_none": "沒有 bond、bridge 或 VLAN 介面。",
+        "nic.guest_summary": "客體網卡 {total} 個（執行中 {running} 個）",
+        "nic.guest_summary_unreadable": "；另有 {count} 份設定檔讀不到，數字可能偏低",
+        "nic.guest_summary_unavailable": "客體網卡：讀不到 VM/CT 設定檔（可能不是 PVE 主機，或設定檔皆無法讀取）。",
+        "nic.relation": "橋接",
+        "nic.rel_belongs": "屬於 {master}",
+        "nic.rel_members": "成員：{members}",
+        "nic.rel_line": "橋接：{nic} — {relation}",
+        # [CHANGE] 2026-10-08 v03.023.000：虛擬介面表的「實體網卡」欄；放不下時改成表下一行。
+        "nic.uplinks": "實體網卡",
+        "nic.uplink_line": "實體網卡：{nic} — {uplinks}",
         "nic.lspci_missing": "無法執行 lspci（可能未安裝 pciutils，或檔案沒有執行權限）。型號將顯示 N/A。",
         "nic.lspci_failed": "lspci 已安裝但執行失敗（可能是權限不足）。型號將顯示 N/A。",
         "nic.lspci_timeout": "lspci 執行逾時（主機未在時限內回應）。可用環境變數 COMMAND_TIMEOUT 調整秒數。型號將顯示 N/A。",
@@ -250,9 +267,9 @@ MESSAGES = {
         "nic.lspci_no_address": "取不到 PCI 位址，未查詢型號：{nics}。型號將顯示 N/A。",
 
         # ── Link 探測（2026-08-25 新增）──
-        # 這一組訊息必須保留，且必須逐張具名網卡。理由見
+        # 這一組訊息必須保留，且必須逐張指出網卡。理由見
         #   render/nic.py 的 _probe_notes()：探測是本工具唯一會改變主機狀態的
-        #   動作，而「還原失敗」代表某張卡此刻正處於我們留下的啟用狀態——
+        #   動作，而「還原失敗」代表某張卡此刻正處於本工具留下的啟用狀態——
         #   只說「部分網卡還原失敗」，使用者無從得知要去把哪一張關回去。
         "nic.probe_done": "說明：{nics} 原為停用狀態，已短暫啟用以判定接線，量測後已還原為停用。",
         "nic.probe_restore_failed": "* 還原失敗：{nics} 仍處於啟用狀態，請自行執行 ip link set <介面> down 關閉。",
@@ -312,6 +329,11 @@ MESSAGES = {
         "guest.running": "執行中",
         "guest.stopped": "未執行",
         "guest.none": "沒有找到任何已設定網卡的 VM 或 CT。",
+        # [CHANGE] 2026-10-08 v03.021.000：VM／LXC 分區。
+        "guest.zone_vm": "VM 區",
+        "guest.zone_lxc": "LXC 區",
+        "guest.zone_vm_none": "沒有已設定網卡的 VM。",
+        "guest.zone_lxc_none": "沒有已設定網卡的 LXC 容器。",
 
         # ── sysctl ──
         "sysctl.key": "參數",
@@ -359,6 +381,9 @@ MESSAGES = {
         "selftest.group_ethtool_calls": "9. ethtool 指令快取",
         "selftest.group_list_limit": "10. 清單截斷揭露",
         "selftest.group_report_perm": "11. 報告檔建立權限",
+        # [CHANGE] 2026-10-07 v03.020.000：補涵蓋 v03.018.000（型號）與 v03.019.000（bond 取樣矛盾）。
+        "selftest.group_nic_model": "12. 網卡型號（lspci）解析與缺 lspci 處理",
+        "selftest.group_traffic_conflict": "13. bond 與成員取樣矛盾判定",
         "selftest.scope": "受檢 {count} 項",
         "selftest.detail_fail": "預期=[{expected}] 實得=[{actual}]",
         "selftest.summary": "自檢結果：通過 {passed} 項、失敗 {failed} 項、略過 {skipped} 項",
@@ -429,10 +454,26 @@ MESSAGES = {
             "建檔旗標帶上不跟隨 symlink",
         "selftest.check_report_perm_chmod_takes_fd":
             "chmod 收到的是已開啟的 fd 而非路徑",
+        "selftest.check_nic_model_plain": "型號字串：子系統為佔位字時不加括號",
+        "selftest.check_nic_model_subsystem": "型號字串：子系統名稱有意義時附全形括號",
+        "selftest.check_nic_model_unrecognised": "認不出廠商與型號時回空結果而非亂湊",
+        "selftest.check_nic_model_pci_address": "PCI 位址驗證拒絕選項形態與缺網域的字串",
+        "selftest.check_nic_model_pci_from_path": "由 device 路徑取 PCI 位址，非 PCI 路徑回 None",
+        "selftest.check_nic_model_missing_lspci": "缺 lspci 時分類為不可執行（不是已安裝但失敗）",
+        "selftest.check_nic_model_argv": "lspci 以 -D 與 -s 指定單一 PCI 位址",
+        "selftest.check_nic_model_option_like_address": "以 - 開頭的位址不會被交給 lspci",
+        "selftest.check_traffic_conflict_read_order": "取樣時成員緊接在 bond 之前讀取",
+        "selftest.check_traffic_conflict_timing": "記錄兩輪讀取各自耗時（不含等待）",
+        "selftest.check_traffic_conflict_bond_only": "bond 有量而成員皆 0 判為矛盾（RX）",
+        "selftest.check_traffic_conflict_members_only": "bond 為 0 而成員有量判為矛盾（TX）",
+        "selftest.check_traffic_conflict_unequal_ok": "兩邊都有量但不相等不算矛盾",
+        "selftest.check_traffic_conflict_no_members": "取樣內沒有任何成員時不判斷",
+        "selftest.check_traffic_conflict_note": "矛盾時印一行說明，無矛盾時完全不印",
+        "selftest.check_traffic_conflict_i18n_fields": "矛盾說明的中英文參數欄位一致",
 
         # [CHANGE] 2026-08-02 選單 5～17 十一項實作。
         # 措辭與欄位逐項對齊 bash 版對應的 render_* 函式，差異一律在該區段的
-        # 程式碼註解裡具名。
+        # 程式碼註解裡說明。
         #
         # ── 跨區段共用 ──
         # IPv4／IPv6／狀態這三個標籤在 bash 的 render_bonds、render_bridges、
@@ -481,6 +522,13 @@ MESSAGES = {
         "bridge.proto_dot1q": "802.1Q (0x8100)",
         "bridge.proto_qinq": "802.1ad QinQ (0x88a8)",
         "bridge.none": "目前沒有執行中的 Linux Bridge。",
+        # [CHANGE] 2026-10-08 v03.022.000：選單 6 上下兩段（互動畫面）。
+        "bridge.zone_virtual": "【虛擬網卡資訊】",
+        "bridge.zone_guest": "【客體機資訊】",
+        "bridge.guest_unreadable": "客體機：讀不到 VM/CT 設定檔，無法列出這座橋接上的客體機（可能不是 PVE 主機，或設定檔皆無法讀取）。",
+        "bridge.guest_partial": "另有 {count} 份設定檔讀不到，客體機清單可能不完整。",
+        "bridge.hidden_note": "已隱藏 {count} 座客體機管線橋接（fwbr，防火牆用）。",
+        "bridge.only_hidden": "目前沒有一般的 Linux Bridge；另有 {count} 座客體機管線橋接（fwbr，防火牆用）已隱藏。",
 
         # ── 選單 7：Open vSwitch ──
         "ovs.label": "OVS Bridge",
@@ -609,6 +657,8 @@ MESSAGES = {
         "app.enabled": "enabled",
         "app.disabled": "disabled",
         "app.unknown": "unknown",
+        # [CHANGE] 2026-10-07 v03.020.000：同 zh-TW 段。
+        "app.dash": "-",
         # 見 zh-TW 段的說明：必須是 ": "（含尾隨空格），顯示寬度才與全形「：」相同。
         "app.kv_sep": ": ",
 
@@ -622,7 +672,7 @@ MESSAGES = {
         "menu.group_overall": "Overall",
         "menu.group_added": "Added by the Python version (not in the bash version)",
         "menu.not_implemented": "Not implemented yet (item #{todo})",
-        "menu.nic_status": "Physical NIC status and RX/TX",
+        "menu.nic_status": "NIC and virtual interface status (with RX/TX)",
         "menu.nic_health": "NIC health: link flaps, errors, drops, firmware",
         "menu.nic_modules": "SFP/QSFP module details",
         "menu.nic_led": "Physical NIC LED identification",
@@ -756,6 +806,20 @@ MESSAGES = {
         # ── NIC model (added 2026-10-06, v03.018.000; data source: lspci) ──
         "nic.model": "Model",
         "nic.model_line": "Model: {nics} — {model}",
+
+        # ── Menu 1 zones and bridge relations (added 2026-10-08, v03.021.000) ──
+        "nic.zone_physical": "Physical NICs",
+        "nic.zone_virtual": "Virtual interfaces (bond, bridge, VLAN)",
+        "nic.zone_virtual_none": "No bond, bridge or VLAN interface found.",
+        "nic.guest_summary": "Guest NICs: {total} ({running} running)",
+        "nic.guest_summary_unreadable": "; {count} config file(s) could not be read, so the count may be low",
+        "nic.guest_summary_unavailable": "Guest NICs: VM/CT config files could not be read (this may not be a PVE host, or none were readable).",
+        "nic.relation": "Bridging",
+        "nic.rel_belongs": "belongs to {master}",
+        "nic.rel_members": "members: {members}",
+        "nic.rel_line": "Bridging: {nic} — {relation}",
+        "nic.uplinks": "Physical NIC",
+        "nic.uplink_line": "Physical NIC: {nic} — {uplinks}",
         "nic.lspci_missing": "lspci could not be executed (pciutils may not be installed, or the file may not be executable). Model will show N/A.",
         "nic.lspci_failed": "lspci is installed but failed to run (possibly insufficient privileges). Model will show N/A.",
         "nic.lspci_timeout": "lspci timed out; the host did not respond within the limit. Adjust the limit with the COMMAND_TIMEOUT environment variable. Model will show N/A.",
@@ -820,6 +884,11 @@ MESSAGES = {
         "guest.running": "running",
         "guest.stopped": "stopped",
         "guest.none": "No VM or CT with a configured NIC was found.",
+        # [CHANGE] 2026-10-08 v03.021.000: VM / LXC zones.
+        "guest.zone_vm": "VM section",
+        "guest.zone_lxc": "LXC section",
+        "guest.zone_vm_none": "No VM with a configured NIC.",
+        "guest.zone_lxc_none": "No LXC container with a configured NIC.",
 
         # ── sysctl ──
         "sysctl.key": "Parameter",
@@ -867,6 +936,9 @@ MESSAGES = {
         "selftest.group_ethtool_calls": "9. ethtool command caching",
         "selftest.group_list_limit": "10. List truncation disclosure",
         "selftest.group_report_perm": "11. Report file creation permissions",
+        # [CHANGE] 2026-10-07 v03.020.000: coverage for v03.018.000 (model) and v03.019.000 (bond sampling mismatch).
+        "selftest.group_nic_model": "12. NIC model (lspci) parsing and missing-lspci handling",
+        "selftest.group_traffic_conflict": "13. Bond vs member sampling mismatch detection",
         "selftest.scope": "{count} checks in scope",
         "selftest.detail_fail": "expected=[{expected}] actual=[{actual}]",
         "selftest.summary": "Self-test: {passed} passed, {failed} failed, {skipped} skipped",
@@ -945,6 +1017,22 @@ MESSAGES = {
             "the create flags include no-follow-symlink",
         "selftest.check_report_perm_chmod_takes_fd":
             "chmod receives the open fd rather than a path",
+        "selftest.check_nic_model_plain": "model string: no parentheses when the subsystem is a placeholder",
+        "selftest.check_nic_model_subsystem": "model string: a meaningful subsystem name is appended in parentheses",
+        "selftest.check_nic_model_unrecognised": "unrecognised vendor and device yield an empty result, not a guess",
+        "selftest.check_nic_model_pci_address": "PCI address validation rejects option-like and domain-less strings",
+        "selftest.check_nic_model_pci_from_path": "PCI address from a device path; non-PCI path gives None",
+        "selftest.check_nic_model_missing_lspci": "a missing lspci is classified as not executable (not installed-but-failed)",
+        "selftest.check_nic_model_argv": "lspci is asked for one PCI address with -D and -s",
+        "selftest.check_nic_model_option_like_address": "an address starting with - is never handed to lspci",
+        "selftest.check_traffic_conflict_read_order": "members are read immediately before their bond during sampling",
+        "selftest.check_traffic_conflict_timing": "the duration of each read pass is recorded (excluding the wait)",
+        "selftest.check_traffic_conflict_bond_only": "bond advancing while members are all 0 is a mismatch (RX)",
+        "selftest.check_traffic_conflict_members_only": "bond at 0 while members advanced is a mismatch (TX)",
+        "selftest.check_traffic_conflict_unequal_ok": "both sides advancing by different amounts is not a mismatch",
+        "selftest.check_traffic_conflict_no_members": "no members in the sample means no judgement",
+        "selftest.check_traffic_conflict_note": "a mismatch prints one note line; no mismatch prints nothing",
+        "selftest.check_traffic_conflict_i18n_fields": "the mismatch note has the same placeholders in both languages",
 
         # [CHANGE] 2026-08-02 選單 5～17 十一項實作。
         # ── shared ──
@@ -990,6 +1078,13 @@ MESSAGES = {
         "bridge.proto_dot1q": "802.1Q (0x8100)",
         "bridge.proto_qinq": "802.1ad QinQ (0x88a8)",
         "bridge.none": "No running Linux Bridge.",
+        # [CHANGE] 2026-10-08 v03.022.000: menu 6 upper / lower sections (interactive view).
+        "bridge.zone_virtual": "[Virtual NIC information]",
+        "bridge.zone_guest": "[Guest information]",
+        "bridge.guest_unreadable": "Guests: VM/CT config files could not be read, so the guests on this bridge cannot be listed (this may not be a PVE host, or none were readable).",
+        "bridge.guest_partial": "{count} config file(s) could not be read, so the guest list may be incomplete.",
+        "bridge.hidden_note": "{count} guest pipeline bridge(s) hidden (fwbr, used by the firewall).",
+        "bridge.only_hidden": "No regular Linux Bridge; {count} guest pipeline bridge(s) (fwbr, used by the firewall) hidden.",
 
         # ── menu 7: Open vSwitch ──
         "ovs.label": "OVS bridge",
@@ -1169,7 +1264,7 @@ def lang_display_name(lang):
 
 
 def _needs_args(text):
-    """[CHANGE] 2026-07-31 新增：訊息本身有沒有帶具名佔位符。
+    """[CHANGE] 2026-07-31 新增：訊息本身有沒有帶命名佔位符。
 
     有佔位符卻沒收到參數，代表呼叫端漏帶——那要吵，不能把 {sec} 原樣印進報告。
     """

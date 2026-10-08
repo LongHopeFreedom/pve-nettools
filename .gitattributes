@@ -34,7 +34,7 @@ pve-network-audit text eol=lf
 # 上面那條規則的立論**逐字適用**於它：`*.sh` 與 `*.py` 兩條 glob 都涵蓋不到，
 # 而它的 shebang 一旦變成 `#!/usr/bin/env bash\r`，在 Linux 上就是 bad interpreter。
 #
-# 這條是 `git add` 自己的警告告訴我的：「LF will be replaced by CRLF the next
+# 這條是 `git add` 自己的警告指出的：「LF will be replaced by CRLF the next
 #   time Git touches it」。**同一個病早就修過一次，只是修在隔壁那個檔上**——
 #   加規則的當下沒有人會想到「以後還會有第二個無副檔名的腳本」。
 tools/hooks/pre-push text eol=lf

@@ -8,7 +8,7 @@ PVE 預設不會啟用未寫進 `/etc/network/interfaces` 的實體網卡。kern
 讀取回 EINVAL ⇒ ``SysfsReader.carrier()`` 回 None ⇒ 畫面顯示「未知」。
 
 那個「未知」在當下**是誠實的**——kernel 真的不知道。缺陷不在判斷寫錯，而在
-  **能力邊界**：盤查工具的用途正是「告訴我哪張卡插了線」，而它對所有沒啟用的卡
+  **能力邊界**：盤查工具的用途正是「告訴使用者哪張卡插了線」，而它對所有沒啟用的卡
   一律回答「不知道」。要拿到答案就只有一條路：先 ``ip link set dev <nic> up``。
 
 ## 這是本工具的第一支、也是唯一一支寫入型指令
@@ -23,7 +23,7 @@ PVE 預設不會啟用未寫進 `/etc/network/interfaces` 的實體網卡。kern
        「已停用但仍歸屬於某個 master」——手動 down 的 bridge port、整組停用的備援
        bond 都屬於這一類。**這兩種情境在 Windows 開發機無法實測**，未驗證。
   3. **admin state 讀不到的卡不碰**——不知道它是不是服役中，保守側是「別動」。
-  4. **借用後歸還**：探測完還原成 down；還原失敗必須具名，不得靜默。
+  4. **借用後歸還**：探測完還原成 down；還原失敗必須逐張列出，不得靜默。
   5. **``PROBE_LINK=0`` 可整個關掉**——唯一的寫入路徑必須有逃生門。
 
 ## admin state 的判準必須是 flags
@@ -32,7 +32,7 @@ PVE 預設不會啟用未寫進 `/etc/network/interfaces` 的實體網卡。kern
 立刻現形：
 
   - ``carrier is None`` ⇒ 錯。admin-up 但驅動讀不到 carrier 的卡會被判成待探測，
-    於是還原階段對一張**服役中的卡**送出 ``ip link set down``——我們自己製造斷線。
+    於是還原階段對一張**服役中的卡**送出 ``ip link set down``——等於工具自己製造斷線。
   - ``operstate == "down"`` ⇒ 錯。admin-up 但沒插線的卡，operstate **也是** down
     （它反映 RFC 2863 的 OPER 狀態，不是 admin 狀態）。
 
@@ -64,7 +64,7 @@ __all__ = [
     "probe_wait_seconds",
 ]
 
-# 略過探測的成因。具名而不是用 bool，理由與 collect/__init__.py 的 FAILURE_* 相同：
+# 略過探測的成因。以命名常數表示而不是用 bool，理由與 collect/__init__.py 的 FAILURE_* 相同：
 # 呈現層要據此對使用者說不同的話——「已啟用」不必解釋，「被 bond0 接管」要說出是誰
 # 接管的，「探測已關閉」則要提示怎麼打開。合成一個 False 就全部說不出來了。
 SKIP_ALREADY_UP = "already_up"
@@ -156,7 +156,7 @@ class LinkProber:
             "error": None,
             "restore_error": None,
             "timed_out": False,
-            # while_up 回呼自己出的事。具名而不是往外拋：回呼失敗只代表
+            # while_up 回呼自己出的事。記進結果而不是往外拋：回呼失敗只代表
             # 「順便做的那件事沒做成」，不該讓整批探測中斷、也不該掩蓋已經
             # 取得的 link 證據。
             "while_up_error": None,
@@ -180,9 +180,9 @@ class LinkProber:
             return result
 
         result["probed"] = True
-        # 從這裡到還原之間，這張卡是**開著的**——那是我們對主機造成的改變。
+        # 從這裡到還原之間，這張卡是**開著的**——那是工具對主機造成的改變。
         #   量測與回呼放 try、還原放 finally：回呼是呼叫端注入的碼，它拋例外
-        #   而還原被跳過的話，我們就把一張卡永遠留在開啟狀態。拿不到速率是
+        #   而還原被跳過的話，就會把一張卡永遠留在開啟狀態。拿不到速率是
         #   小事，留一張卡開著不是。
         try:
             link, timed_out = self._await_carrier(nic)
@@ -242,7 +242,7 @@ class LinkProber:
                            ["ip", "link", "set", "dev", nic, action])
 
     def _bring_up(self, nic, result):
-        """啟用網卡。回傳 True 表示卡確實被我們開起來了。
+        """啟用網卡。回傳 True 表示卡確實被本工具開起來了。
 
         `ip link set` 成功時**沒有任何輸出** ⇒ run_command 回的是 STATUS_EMPTY
           而不是 STATUS_OK。判成功必須用「不是 unavailable」，寫成
@@ -258,7 +258,7 @@ class LinkProber:
         return True
 
     def _restore(self, nic, result):
-        """把卡關回去。無條件執行：走到這裡卡就已經被我們 up 起來了，
+        """把卡關回去。無條件執行：走到這裡卡就已經被本工具 up 起來了，
         量到或量不到都一樣要還。"""
         down = self._link_set(nic, "down")
         if down["status"] == STATUS_UNAVAILABLE:

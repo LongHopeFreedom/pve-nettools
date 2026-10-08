@@ -1,6 +1,6 @@
 """pve-nettools — Proxmox VE 網路盤查工具。
 
-重寫自 v02.002.001 的 bash 版（保留於 old/ 備查，待本版真機驗證通過後除役）。
+重寫自 v02.002.001 的 bash 版。
 
 設計原則：
   * 只用 Python 標準庫。使用者 clone 下來就能跑，不需要 pip、不需要 venv——
@@ -12,7 +12,7 @@
     bash 版早期把畫面與報告寫成兩套幾乎相同的碼，欄位很快就不同步了。
 """
 
-__version__ = "03.019.000"
+__version__ = "03.023.001"
 __author__ = "LeeFreedom"
 
 # 目標執行環境：PVE 7（Debian 11 / Python 3.9）以上。

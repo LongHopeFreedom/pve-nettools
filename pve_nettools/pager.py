@@ -45,7 +45,7 @@ def pager_command(env=None, isatty_fn=None, which_fn=None):
 #
 #   關鍵鑑別：less 啟動**之前**印到終端的中文完全正常，而 less 內連
 #   `MAC Address`／`1000Mb/s` 這些純 ASCII 也都好好的 ⇒ 終端是 UTF-8、
-#   我們的輸出也是 UTF-8，**壞的只有 less 對字元集的判定**。
+#   本工具的輸出也是 UTF-8，**壞的只有 less 對字元集的判定**。
 #
 # 這不是「中文才有」的問題：英文介面同樣中招，因為區塊標題的
 #   `── nic2 ──` 用的是 U+2500（UTF-8 為 E2 94 80）。切語系躲不掉。
@@ -63,8 +63,8 @@ def pager_env(env=None):
     回傳的是**補上一項的完整環境**，不是只有那一項——子行程沒有 TERM 就不知道
       終端能力，沒有 PATH 連自己都找不到，畫面會壞得比原本更徹底。
 
-    使用者已明確設定 `LESSCHARSET` 時不覆蓋。我們補的是「沒人設定時的預設」，
-      不是「我們比使用者更懂」。
+    使用者已明確設定 `LESSCHARSET` 時不覆蓋。這裡補的是「沒人設定時的預設」，
+      不是「工具比使用者更懂」。
 
     複製一份再改，不得就地寫入：傳進來的很可能就是 `os.environ`，
       污染它會讓本行程後續每一次子行程啟動都帶著這一項，而症狀出現的地方
@@ -82,7 +82,7 @@ def _default_spawn(argv, env, popen_fn=None):
     `encoding="utf-8"` 必須明確指定，不得退回 `universal_newlines=True`：
       後者的編碼取自 `locale.getpreferredencoding()`，在 LANG=C 的主機上那是個
       隱含相依，最壞情況是 `UnicodeEncodeError` 讓整份盤查中斷。
-      這與 `LESSCHARSET` 是**不同的兩件事**——一個是我們怎麼寫，一個是 less
+      這與 `LESSCHARSET` 是**不同的兩件事**——一個是工具怎麼寫，一個是 less
         怎麼讀。兩者恰好都由同一個 locale 引起，但少做任何一邊都不算修好。
     """
     popen = subprocess.Popen if popen_fn is None else popen_fn

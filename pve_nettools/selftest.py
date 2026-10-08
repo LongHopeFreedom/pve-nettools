@@ -18,6 +18,7 @@
 import contextlib
 import io
 import os
+import string
 import subprocess
 import tempfile
 
@@ -25,9 +26,12 @@ from . import __version__
 from . import i18n, width
 # [CHANGE] 2026-08-03：把六類既有產品契約納入內建自檢，讓離線自檢也能守住。
 from . import report
-from .collect import bridge, ethtool, netconf, pve, sysfs
+# [CHANGE] 2026-10-07 v03.020.000：lspci（網卡型號）併入自檢射程。
+from .collect import bridge, ethtool, lspci, netconf, pve, sysfs
 from .i18n import t
+from . import render
 from .render import base
+from .render import nic as nic_render
 
 PASS = "PASS"
 FAIL = "FAIL"
@@ -303,8 +307,162 @@ def _checks_report_perm():
                lambda: _chmod_got_open_fd(calls())),
     ]
 
+# [CHANGE] 2026-10-07 v03.020.000：補涵蓋 v03.018.000（網卡型號）。
+#          v03.018.000／v03.019.000 新增的功能原本不在 --self-test 射程內
+#          （lspci／型號／traffic_conflict 命中 0）⇒ 「自檢全過」對這兩項功能沒有證據力。
+def _checks_nic_model():
+    """lspci 輸出的解析與型號字串、PCI 位址驗證、缺 lspci 時的分類與 argv。"""
+    plain = ("Slot:\t0000:04:00.0\nClass:\tEthernet controller\n"
+             "Vendor:\tBroadcom Inc. and subsidiaries\n"
+             "Device:\tNetXtreme BCM5720 Gigabit Ethernet PCIe\n"
+             "SVendor:\tDell\nSDevice:\tDevice 001f\n")
+    with_subsystem = ("Slot:\t0000:af:00.0\nClass:\tEthernet controller\n"
+                      "Vendor:\tIntel Corporation\n"
+                      "Device:\tEthernet Controller X710 for 10GbE SFP+\n"
+                      "SVendor:\tIntel Corporation\n"
+                      "SDevice:\tEthernet Converged Network Adapter X710\n")
+
+    def completed(stdout="", returncode=0):
+        return subprocess.CompletedProcess([], returncode, stdout, "")
+
+    def model_of(text):
+        return lspci.format_model(lspci.parse_lspci(text))
+
+    def missing_lspci():
+        def run(_argv):
+            raise FileNotFoundError("lspci")
+        result = lspci.LspciReader(run_fn=run).model("0000:04:00.0")
+        return result["status"], result["failure"]
+
+    def argv_used():
+        calls = []
+
+        def run(argv):
+            calls.append(list(argv))
+            return completed(plain)
+        lspci.LspciReader(run_fn=run).model("0000:04:00.0")
+        return calls
+
+    def option_like_address():
+        try:
+            lspci.LspciReader(run_fn=lambda _argv: completed(plain)).model("-s")
+        except ValueError:
+            return "ValueError"
+        return "no error"
+
+    group = "selftest.group_nic_model"
+    return [
+        _check(group, "selftest.check_nic_model_plain",
+               "Broadcom Inc. and subsidiaries "
+               "NetXtreme BCM5720 Gigabit Ethernet PCIe",
+               lambda: model_of(plain)),
+        _check(group, "selftest.check_nic_model_subsystem",
+               "Intel Corporation Ethernet Controller X710 for 10GbE SFP+"
+               "（Intel Corporation Ethernet Converged Network Adapter X710）",
+               lambda: model_of(with_subsystem)),
+        _check(group, "selftest.check_nic_model_unrecognised",
+               ({}, None),
+               lambda: (lspci.parse_lspci("no colon here\n"),
+                        lspci.format_model({}))),
+        _check(group, "selftest.check_nic_model_pci_address",
+               (True, False, False),
+               lambda: (lspci.valid_pci_address("0000:04:00.0"),
+                        lspci.valid_pci_address("-s"),
+                        lspci.valid_pci_address("04:00.0"))),
+        _check(group, "selftest.check_nic_model_pci_from_path",
+               ("0000:04:00.1", None),
+               lambda: (sysfs.pci_address_from_path(
+                   "/sys/devices/pci0000:00/0000:00:1c.0/0000:04:00.1"),
+                   sysfs.pci_address_from_path("/sys/devices/virtual/net/lo"))),
+        _check(group, "selftest.check_nic_model_missing_lspci",
+               ("unavailable", "not_executable"), missing_lspci),
+        _check(group, "selftest.check_nic_model_argv",
+               [["lspci", "-vmm", "-D", "-s", "0000:04:00.0"]], argv_used),
+        _check(group, "selftest.check_nic_model_option_like_address",
+               "ValueError", option_like_address),
+    ]
+
+
+# [CHANGE] 2026-10-07 v03.020.000：補涵蓋 v03.019.000（bond 與成員取樣矛盾說明列）。
+def _checks_traffic_conflict():
+    """bond 與成員的讀取順序、耗時、矛盾判定與說明列。"""
+    class Recorder(object):
+        def __init__(self):
+            self.reads = []
+
+        def statistic(self, nic, name):
+            if name == "rx_bytes":
+                self.reads.append(nic)
+            return 0
+
+    def first_pass_order():
+        reader = Recorder()
+        nics = ["eno1", "eno2", "eno3", "bond0", "vmbr0"]
+        sysfs.sample_traffic(reader, nics, seconds=0,
+                             bond_members={"bond0": ["eno1", "eno3"]})
+        return reader.reads[:len(nics)]
+
+    def timing_values():
+        ticks = iter([10.0, 10.5, 20.0, 21.25])
+        timing = {}
+        sysfs.sample_traffic(Recorder(), ["eno1"], seconds=0,
+                             sleep_fn=lambda _s: None, timing=timing,
+                             clock=lambda: next(ticks))
+        return timing["first"], timing["second"]
+
+    members = {"bond0": ["eno1", "eno2"]}
+
+    def conflicts(traffic):
+        found = sysfs.bond_traffic_conflicts(traffic, members)
+        return [(item["bond"], item["direction"]) for item in found]
+
+    def note_lines():
+        item = {"bond": "bond0", "direction": "rx", "bond_delta": 2048,
+                "members_delta": 0, "members": ["eno1", "eno2"],
+                "first": 0.5, "second": 1.25}
+        palette = render.Palette(enabled=False)
+        context = type("Ctx", (object,), {"palette": palette})()
+        lines = nic_render._conflict_notes(
+            [{"traffic_conflicts": [item]}], context)
+        quiet = nic_render._conflict_notes(
+            [{"traffic_conflicts": []}], context)
+        return (len(lines), "bond0" in lines[0], "2.0 KB" in lines[0],
+                quiet)
+
+    def placeholder_fields(lang):
+        text = i18n.MESSAGES[lang]["nic.traffic_conflict"]
+        return sorted(name for _, name, _, _ in string.Formatter().parse(text)
+                      if name)
+
+    group = "selftest.group_traffic_conflict"
+    return [
+        _check(group, "selftest.check_traffic_conflict_read_order",
+               ["eno2", "eno1", "eno3", "bond0", "vmbr0"], first_pass_order),
+        _check(group, "selftest.check_traffic_conflict_timing",
+               (0.5, 1.25), timing_values),
+        _check(group, "selftest.check_traffic_conflict_bond_only",
+               [("bond0", "rx")],
+               lambda: conflicts({"bond0": (5, 0), "eno1": (0, 0),
+                                  "eno2": (0, 0)})),
+        _check(group, "selftest.check_traffic_conflict_members_only",
+               [("bond0", "tx")],
+               lambda: conflicts({"bond0": (0, 0), "eno1": (0, 7),
+                                  "eno2": (0, 0)})),
+        _check(group, "selftest.check_traffic_conflict_unequal_ok", [],
+               lambda: conflicts({"bond0": (100, 0), "eno1": (60, 0),
+                                  "eno2": (30, 0)})),
+        _check(group, "selftest.check_traffic_conflict_no_members", [],
+               lambda: conflicts({"bond0": (5, 5)})),
+        _check(group, "selftest.check_traffic_conflict_note",
+               (1, True, True, []), note_lines),
+        _check(group, "selftest.check_traffic_conflict_i18n_fields", True,
+               lambda: placeholder_fields("zh-TW") == placeholder_fields("en")
+               and len(placeholder_fields("en")) > 0),
+    ]
+
+
 def default_checks():
-    """回傳十一組已知答案；actual callable 只會由 run_checks 執行。"""
+    """回傳十三組已知答案；actual callable 只會由 run_checks 執行。"""
     guest_sample = (
         "virtio=AA:BB:CC:DD:EE:FF, bridge=vmbr0, tag=100, firewall=1")
     vlan_values = "10,20,21,22,23,30"
@@ -380,7 +538,8 @@ def default_checks():
     # [CHANGE] 2026-08-03：六類各自成函式，否則本函式會膨脹到無法閱讀。
     for extra in (_checks_sysfs, _checks_medium, _checks_bridge_vlan,
                   _checks_ethtool_calls, _checks_list_limit,
-                  _checks_report_perm):
+                  _checks_report_perm, _checks_nic_model,
+                  _checks_traffic_conflict):
         checks.extend(extra())
     return checks
 

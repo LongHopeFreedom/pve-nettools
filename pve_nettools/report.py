@@ -66,7 +66,7 @@ def dir_segments(directory):
     """把目錄拆成 (根, [逐段名稱])，供逐段開啟使用。
 
     以絕對路徑為準：相對路徑的每一段同樣要檢查，而 os.path.abspath 只做字串正規化，
-    不會解析 symlink——**這正是我們要的**，解析掉就沒東西可擋了。
+    不會解析 symlink——**這正是需要的行為**，解析掉就沒東西可擋了。
     """
     absolute = os.path.abspath(directory)
     drive, rest = os.path.splitdrive(absolute)
@@ -93,7 +93,7 @@ def open_dir_chain(directory, nofollow):
 
 
 # [CHANGE] 2026-08-05：逐段建立目錄，補掉 generate() 的 os.makedirs
-# 會跟隨 symlink 的殘留（原由第 4 輪資安檢測具名登記）。
+# 會跟隨 symlink 的殘留（原由第 4 輪資安檢測列為殘留）。
 #
 # 這是一條**只在目標平台執行**的分支（Windows 的 os.mkdir 不收 dir_fd），
 #    而先前最貴的缺陷正是這個形態：當時的改動讓 write_report 在支援 dir_fd 的平台
@@ -209,7 +209,8 @@ def report_lines(readers, host, timestamp, version, kernel, pve_version,
         if progress_fn is not None:
             progress_fn(t("report.generating", title=title))
         lines.extend(("", "#" * 80, "# %s" % title, "#" * 80, ""))
-        lines.extend(entry.factory(readers).render(safe_ctx))
+        # [CHANGE] 2026-10-08 v03.021.000：報告走 report_factory（選單 1／10 的舊版面）。
+        lines.extend(entry.report_factory(readers).render(safe_ctx))
     return lines
 
 
@@ -277,7 +278,7 @@ def write_report(path, lines, opener=None, chmod_fn=None,
     if parent_fd is None:
         makedirs_fn(directory, exist_ok=True)
     # [CHANGE] 2026-08-04：O_TRUNC 拿掉、換成 O_EXCL。O_EXCL 保證這個檔是
-    #          我們建的，既然是新建的就沒有東西可以截斷——兩者同時寫只會讓讀的人
+    #          本工具建的，既然是新建的就沒有東西可以截斷——兩者同時寫只會讓讀的人
     #          以為還有覆寫路徑。
     # O_EXCL 與 O_NOFOLLOW 在**最後一段**上射程重疊：POSIX 規定 O_CREAT|O_EXCL
     #   遇到既有 symlink 一律 EEXIST，不論它指向哪裡。兩個都留著是刻意的——
@@ -327,7 +328,7 @@ def generate(readers, env=None, quiet=False, host_fn=None, now_fn=None,
     #          Palette(enabled=False)，不可把互動 palette 寫進報告正文。
     ctx = app.build_context(env=env)
     # [CHANGE] 2026-08-02 先確認目錄可建立，避免明知無法輸出仍執行耗時且可能敏感的系統取值。
-    # [CHANGE] 2026-08-04 的具名殘留（該版第 1 輪對抗式覆核抓到）：
+    # [CHANGE] 2026-08-04 記載的殘留（該版第 1 輪對抗式覆核抓到）：
     #   這一步原本用真的 os.makedirs，而它**會跟隨 symlink**。REPORT_DIR 若指向
     #   一個父目錄是 symlink 的不存在路徑，就會穿過去建出目錄。
     # [CHANGE] 2026-08-05：已補上。支援 dir_fd 的平台改走 mkdir_chain()

@@ -35,17 +35,45 @@ from .util import positive_int
 class MenuEntry(object):
     """目錄裡的一項；factory 為 None 表示未實作。"""
 
-    def __init__(self, number, group, title_key, todo, factory):
+    def __init__(self, number, group, title_key, todo, factory,
+                 report_factory=None):
         self.number = number
         self.group = group
         self.title_key = title_key
         self.todo = todo
         self.factory = factory
+        # [CHANGE] 2026-10-08 v03.021.000：完整報告專用工廠；None ＝ 與互動選單同一個。
+        # 選單 1／10 的互動版面改成分區（v03.021.000），而決定這一版報告輸出
+        #   不動 ⇒ 兩者的區段建構方式必須能分開。其餘項目不給就沿用 factory。
+        self.report_factory = factory if report_factory is None else report_factory
 
 
 def _action(_readers):
     """讓已實作的互動動作可依 factory 判準留在目錄中。"""
     return None
+
+
+# [CHANGE] 2026-10-08 v03.021.000：選單 1／10 的兩種建構。zoned=True 為互動選單的分區版面，
+#          False 為完整報告沿用的舊版面（逐位元不變）。
+def _nic_section(r, zoned):
+    return NicSection(r.sysfs, r.ethtool,
+                      sample_seconds=r.sample_seconds,
+                      prober=r.linkprobe,
+                      lspci_reader=r.lspci,
+                      bond_reader=r.bond,
+                      guest_reader=r.guest,
+                      zoned=zoned,
+                      ip_reader=r.ip)
+
+
+def _guest_section(r, zoned):
+    return GuestSection(r.guest, r.sysfs, zoned=zoned)
+
+
+# [CHANGE] 2026-10-08 v03.022.000：選單 6 的兩種建構。zoned=True 為互動選單的上下兩段版面
+#          （上：虛擬網卡資訊；下：客體機資訊），False 為完整報告沿用的舊版面（逐位元不變）。
+def _bridge_section(r, zoned):
+    return BridgeSection(r.sysfs, r.ip, guest_reader=r.guest, zoned=zoned)
 
 
 # [CHANGE] 2026-08-02 未完成項也留在 SSOT，因為靜默刪除會把「沒做」偽裝成「已涵蓋」。
@@ -59,11 +87,8 @@ MENU_ENTRIES = (
     # 「哪張卡插了線」。探測會短暫啟用該卡再還原，是本工具唯一的寫入路徑，
     # 邊界與逃生門見 collect/linkprobe.py。
     MenuEntry(1, "phys", "menu.nic_status", None,
-              lambda r: NicSection(r.sysfs, r.ethtool,
-                                   sample_seconds=r.sample_seconds,
-                                   prober=r.linkprobe,
-                                   lspci_reader=r.lspci,
-                                   bond_reader=r.bond)),
+              lambda r: _nic_section(r, True),
+              report_factory=lambda r: _nic_section(r, False)),
     MenuEntry(2, "phys", "menu.nic_health", None,
               lambda r: HealthSection(r.sysfs, r.ethtool)),
     # [CHANGE] 2026-08-02：第 3 項實作完成，todo 欄轉為 None。
@@ -75,7 +100,8 @@ MENU_ENTRIES = (
     MenuEntry(5, "l2", "menu.bond", None,
               lambda r: BondSection(r.bond, r.sysfs, r.ip)),
     MenuEntry(6, "l2", "menu.bridge", None,
-              lambda r: BridgeSection(r.sysfs, r.ip)),
+              lambda r: _bridge_section(r, True),
+              report_factory=lambda r: _bridge_section(r, False)),
     MenuEntry(7, "l2", "menu.ovs", None,
               lambda r: OvsSection(r.ovs, r.sysfs, r.ip)),
     MenuEntry(8, "l2", "menu.vlan_sub", None,
@@ -83,7 +109,8 @@ MENU_ENTRIES = (
     MenuEntry(9, "l2", "menu.bridge_vlan", None,
               lambda r: BridgeVlanSection(r.bridge, r.sysfs)),
     MenuEntry(10, "l2", "menu.guest_nics", None,
-              lambda r: GuestSection(r.guest, r.sysfs)),
+              lambda r: _guest_section(r, True),
+              report_factory=lambda r: _guest_section(r, False)),
     MenuEntry(11, "l2", "menu.vlan_reconcile", None,
               lambda r: VlanReconcileSection(r.bridge, r.sysfs, r.guest)),
     MenuEntry(12, "l3", "menu.ip_routing", None,

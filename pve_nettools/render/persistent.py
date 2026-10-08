@@ -60,7 +60,7 @@ class PersistentSection(Section):
     #   底下的設定與「.new 尚未套用」那行警告**一起消失**。使用者看到的是一句
     #   「找不到」，而真正的設定就在隔壁目錄裡。
     # 這一條是「三態被壓成兩態」的又一次：empty（有檔沒內容）與 unavailable
-    #   （沒有檔）在 collect 層分得好好的，是我在 render 層把它們合併掉了。
+    #   （沒有檔）在 collect 層分得好好的，是在 render 層把它們合併掉了。
     def is_empty(self, data):
         return data["main"]["status"] == STATUS_UNAVAILABLE
 

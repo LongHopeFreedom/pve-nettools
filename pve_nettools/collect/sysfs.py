@@ -152,7 +152,7 @@ class SysfsReader:
     #   流量」在畫面上完全一樣——都是看不到那一列。
     # 順序是**分組**不是全域排序：實體卡在前，其後 bond → bridge → VLAN。
     #   全域字母序會讓 bond0 排到 eno1 前面，實體卡被虛擬介面打散,而使用者
-    #   看這張表的第一個問題幾乎總是「我的網卡怎麼了」。
+    #   看這張表的第一個問題幾乎總是「網卡怎麼了」。
     # 去重不是防禦性程式設計，是實地形態：某些 bonding 驅動會為 bond
     #   介面建 `device` 連結，那時 bond0 同時滿足 is_physical 與 is_bond，
     #   四段直接相接就會出現**兩列 bond0**——表格裡的重複列看起來像「有兩
@@ -229,7 +229,7 @@ class SysfsReader:
             carrier   → admin-up 但驅動讀不到 carrier 的卡回 None ⇒ 同樣誤判。
 
           後果不是顯示錯誤：`linkprobe` 會據此對一張**正在承載流量的卡**送出
-          `ip link set down`，也就是我們自己製造斷線。
+          `ip link set down`，也就是工具自己製造斷線。
 
         `flags` 是十六進位字串（例如 "0x1003"），IFF_UP 是最低位元。
         """

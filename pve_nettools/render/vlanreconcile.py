@@ -67,7 +67,7 @@ class VlanReconcileSection(Section):
         #   輸出」這個未在真機實測的前提：「VLAN-aware」的定義就在
         #   vlan_filtering，用它判至少不會比用指令輸出差。有輸出 ⇒ 修正誤判；
         #   沒輸出 ⇒ 兩種判準結論相同、行為零變化。
-        # 依賴具名：sysfs 讀不到 /sys/class/net 時 bridges() 回空 ⇒ 判
+        # 依賴說明：sysfs 讀不到 /sys/class/net 時 bridges() 回空 ⇒ 判
         #   no_vlan_aware。該情境要求「bridge 指令可用且有輸出」而「/sys 讀不
         #   到」同時成立，在 Linux 上兩者同源；**本版未實測其可達性**。
         vlan_aware = self._vlan_aware_bridges()

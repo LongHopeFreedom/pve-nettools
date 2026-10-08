@@ -38,7 +38,7 @@ def _value(value):
     與 bash 的**刻意差異**：bash 的 field_value 找不到欄位時回空字串，畫面上
       會是「廠商　　　　：」這樣的空值，看起來像工具壞了。本套件其他區段一律以
       app.na 表示缺值，保持工具內一致比逐字對齊 bash 更重要——使用者是在同一個
-      畫面裡上下對照不同區段的。此差異已具名，若要改回空字串請一併調整測試。
+      畫面裡上下對照不同區段的。此差異已註明，若要改回空字串請一併調整測試。
     """
     return t("app.na") if value is None or value == "" else str(value)
 

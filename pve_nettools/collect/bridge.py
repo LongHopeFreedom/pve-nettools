@@ -19,6 +19,7 @@
 """
 
 import re
+from collections import deque
 
 from . import STATUS_OK, default_run, parsed_result, run_command
 
@@ -169,6 +170,45 @@ def port_kind(name, is_bridge=False):
     if is_bridge:
         return PORT_BRIDGE
     return PORT_UPLINK
+
+
+# ── 虛擬介面往下解到實體網卡 ────────────────────────────────────────────
+
+# [CHANGE] 2026-10-08 v03.023.000 新增：選單 1 虛擬介面表「實體網卡」欄。
+# 實體網卡所在深度（起點為 0）超過此值就放棄。實務上 VLAN → 橋接 → bond → 實體卡只有
+# 三層，上限只是防護：資料互相引用或層層相套時不會跑太久，代價是過深者顯示為「解不到」。
+UPLINK_MAX_DEPTH = 8
+
+
+def physical_uplinks(iface, kind_of, lower_of, max_depth=UPLINK_MAX_DEPTH):
+    """回 iface 底下接到的實體網卡名稱清單（依首次走到的順序、不重複）。
+
+    kind_of(name)        → "physical"／"bond"／"bridge"／"vlan"／其他
+    lower_of(name, kind) → 該介面的下一層（橋接的成員、bond 的成員、VLAN 的底層）
+
+    這個函式不碰 sysfs 與指令，兩個查詢函式由呼叫端提供，所以拓撲可以用合成資料驗證。
+    - 客體機管線介面（tap／veth／fwbr／fwpr／fwln，同 is_guest_iface）不算實體網卡，也不往下走。
+    - 已走過的介面不再走（循環、菱形相接各只算一次）；深度超過 max_depth 放棄那一支。
+    - 逐層（由近到遠）走訪，所以每個介面都以最短深度被計算，不因走訪順序而被深度上限誤擋；
+      不用遞迴，層數再深也不會觸發遞迴上限。
+    - 解不到任何實體網卡就回空清單，由呼叫端決定怎麼顯示。
+    """
+    found = []
+    seen = set()
+    queue = deque([(iface, 0)])
+    while queue:
+        name, depth = queue.popleft()
+        if name in seen or depth > max_depth:
+            continue
+        seen.add(name)
+        kind = kind_of(name)
+        if kind == "physical":
+            found.append(name)
+            continue
+        for lower in (lower_of(name, kind) or []):
+            if lower and not is_guest_iface(lower):
+                queue.append((lower, depth + 1))
+    return found
 
 
 # ── bridge vlan show 解析 ─────────────────────────────────────────────

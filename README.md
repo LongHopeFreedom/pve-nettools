@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.019.000**.
+A Proxmox VE network audit tool. The Python rewrite uses the extensionless, shebang-based `pve-network-audit` entry point and is version **v03.023.001**.
 
 Repository: `github.com/LongHopeFreedom/pve-nettools`
 
@@ -66,12 +66,12 @@ Choose a language at the startup prompt, press `L` in the menu to switch live, o
 | # | Group | Item | Details |
 |---|---|---|---|
 | 0 | — | Exit | Exit the program |
-| 1 | phys | NIC and virtual interface status | MAC, link, speed, duplex, MTU, media/type, RX/TX, driver, PCI address, plus the **model** of each physical NIC listed below the table (from `lspci`; not shown for virtual interfaces). **Since v03.016.000 this includes bond, vmbr and VLAN interfaces**: the interface kind (Bond/Bridge/VLAN) appears in the media column. Such interfaces are **not** queried with `ethtool`, so these four fields — speed, duplex, driver and PCI address — are reported as N/A instead; `ethtool` reports a fabricated speed for a software bridge, so claiming a number there would be dishonest |
+| 1 | phys | NIC and virtual interface status (with RX/TX) | MAC, link, speed, duplex, MTU, media/type, RX/TX, driver, PCI address, plus the **model** of each physical NIC listed below the table (from `lspci`; not shown for virtual interfaces). In the interactive view the virtual-interface table (bond, bridge, VLAN) has a **Physical NIC** column that lists the physical NIC(s) each interface ultimately connects to (for example `vmbr0` → `enp6s0`; `—` when none can be resolved; several are joined with `, `); on a narrow terminal the same information moves to one line per interface below the table. The full report is unchanged. *This column has not been verified on a real host in this public release.* **Since v03.016.000 this includes bond, vmbr and VLAN interfaces**: the interface kind (Bond/Bridge/VLAN) appears in the media column. Such interfaces are **not** queried with `ethtool`, so these four fields — speed, duplex, driver and PCI address — are reported as N/A instead; `ethtool` reports a fabricated speed for a software bridge, so claiming a number there would be dishonest |
 | 2 | phys | NIC health | Link flaps, RX/TX errors and drops, CRC errors, autonegotiation, NUMA, firmware |
 | 3 | phys | SFP/QSFP module details | Vendor, part and serial numbers, connector, module type, temperature, voltage, optical power |
 | 4 | phys | Physical NIC LED identification | Uses `ethtool -p` for on-site cable identification |
 | 5 | l2 | Bond configuration and member state | Mode, members, active slave, hash policy, LACP rate, minimum links |
-| 6 | l2 | Linux Bridge | Ports, VLAN awareness, vlan_protocol, default_pvid, STP, MTU, IPv4/v6 |
+| 6 | l2 | Linux Bridge | Ports, VLAN awareness, vlan_protocol, default_pvid, STP, MTU, IPv4/v6. In the interactive view each bridge is shown in two parts: an upper part with virtual NIC information (the bridge itself plus its non-guest members) and a lower part with the guests attached to it, split into a VM zone and an LXC zone. The helper bridges PVE creates for firewalled guest NICs (`fwbr…`) are hidden in the interactive view, with a note giving how many were hidden; the full report (`--report`, menu 19) is unchanged and still lists them. *The two-part view and the `fwbr` hiding have not been verified on a real host in this public release.* |
 | 7 | l2 | Open vSwitch | OVS bridges, ports, VLAN tags, interfaces, and bond status |
 | 8 | l2 | VLAN sub-interfaces | VLAN ID, parent interface and type, MTU, state, IPv4 |
 | 9 | l2 | Bridge VLAN filter | Per-port allowed list with PVID and tagged/untagged markers |
@@ -99,10 +99,11 @@ Choose a language at the startup prompt, press `L` in the menu to switch live, o
 | Required | `iproute2` (`ip`, `bridge`) | Affected sections show a notice and are skipped |
 | Recommended | `ethtool` | Speed, duplex, firmware, and LED data show N/A; media shows "Unknown" |
 | Recommended | `lldpd` | Switch and port mapping is unavailable |
+| Recommended | `pciutils` (`lspci`) | The NIC model in menu 1 shows N/A, with an explanatory line |
 | Optional | `openvswitch-switch` | Needed only for OVS environments |
 
 ```bash
-apt update && apt install -y ethtool lldpd
+apt update && apt install -y ethtool lldpd pciutils
 systemctl enable --now lldpd
 ```
 
@@ -160,13 +161,23 @@ install -d -m 0700 /var/log/pve-audit
 
 ## Built-in self-test
 
-`--self-test` covers exactly these five groups; use the check count printed by the command rather than a hardcoded count:
+`--self-test` currently runs 13 groups with 72 checks in total (v03.020.000, measured by running `python -m pve_nettools --self-test` in the `pve_nettools` package directory); use the check count printed by the command as the authority:
 
-- `group_width`: ASCII, CJK, and mixed display width, padding, and truncation.
-- `group_vlan`: VLAN expansion, empty input, round trips, and membership checks.
-- `group_guest`: guest fields, key/value parsing, and valid/invalid MAC checks.
-- `group_netconf`: joining network configuration, stanzas, comments, blanks, and `auto` handling.
-- `group_i18n`: translation differences, empty values, and supported languages.
+- Display width (CJK full-width counts as 2 columns): ASCII, CJK, and mixed display width, padding, and truncation.
+- VLAN list expansion and compression: expansion, empty input, round trips, and membership checks.
+- VM/CT interface config parsing: guest fields, key/value parsing, and valid/invalid MAC checks.
+- Interface config file parsing: joining, stanzas, comments, blanks, and `auto` handling.
+- Bilingual message table alignment: translation differences, empty values, and supported languages.
+- sysfs read failure and empty-value handling.
+- Network media semantic field decisions.
+- `bridge vlan show` indented-output parsing.
+- `ethtool` command cache (actual call counts).
+- List truncation disclosure.
+- Report file creation permissions.
+- NIC model (`lspci`) parsing and missing-`lspci` handling.
+- Bond vs member sampling mismatch decision.
+
+The self-test covers only the pure functions and small known-answer cases listed above; it does not run the full rendering of each section and does not read the real system.
 
 Run it after changing decision logic. A non-zero return code indicates a failed decision check.
 
@@ -185,17 +196,20 @@ Run it after changing decision logic. A non-zero return code indicates a failed 
 
 **Not covered** (that host has no such hardware, or never entered these states):
 
-- **Bond**, **SFP/QSFP modules**, and **VLAN sub-interfaces**: the host had none, so only the "correctly reports no data" path was exercised—not the rendering of actual data
+- **Bond**, **SFP/QSFP modules**, and **VLAN sub-interfaces**: the host had none, so only the "correctly reports no data" path was exercised—not the rendering of actual data (this refers to the host verified on 2026-08-03; later real-host observations of bonds are in the v03.016.000 and v03.019.000 items below)
 - **ethtool failure messages**: all three ethtool queries succeeded, so the four cause-specific messages and the "the following fields will show N/A" line never appeared
 - **Multi-node clusters** and **hosts with several physical NICs**
-- **The bond/vmbr/VLAN traffic rows added in v03.016.000**: almost all verification ran against a fake sysfs on Windows. Of the three things only a real host can settle, only one has real-host evidence: whether bond counters are the sum of their members. On 2026-10-06, on one Proxmox VE host (one bond, two member NICs), the `statistics` counters were read directly twice, 3 seconds apart: the two members' RX grew by 180 and 238, the bond's RX grew by 418; TX growth was 0 on all three; in both readings the bond equaled the sum of the two members. Limits: one host, one bond, bond mode not recorded, and TX showed no growth during the observation (so the TX growth sum was not observed). The other two remain unverified on a real host: the actual `DEVTYPE` values, and whether bridge counters exclude port-to-port forwarding (⇒ VM-to-VM traffic is invisible on `vmbr0`)
-- **The bond and member sampling behavior added in v03.019.000** (adjacent reads, per-pass read durations, the mismatch note): verified only against a fake sysfs on Windows, **not run on a real host**. A real host once showed bond0 TX with traffic while both member NICs showed none; it was not reproduced and the cause is unconfirmed. This version narrows the read gap and leaves numbers behind if the mismatch recurs; it does not guarantee the mismatch is gone, and it cannot show that the read gap was the cause
+- **The bond/vmbr/VLAN traffic rows added in v03.016.000**: almost all verification ran against a fake sysfs on Windows. Of the three things only a real host can settle, only one has real-host evidence: whether bond counters are the sum of their members. On 2026-10-06, on one Proxmox VE host (one bond, two member NICs), the `statistics` counters were read directly twice, 3 seconds apart: the two members' RX grew by 180 and 238, the bond's RX grew by 418; TX growth was 0 on all three; in both readings the bond equaled the sum of the two members. Limits: one host, one bond, bond mode not recorded, and TX showed no growth during the observation (so the TX growth sum was not observed in that direct counter reading; in the v03.019.000 real-host check, the displayed values matched the member sums even where TX had grown, see the next item). The other two: the actual `DEVTYPE` values were not recorded separately (in the v03.019.000 real-host check the Bond/Bridge/VLAN type classification was displayed correctly); whether bridge counters exclude port-to-port forwarding (⇒ VM-to-VM traffic is invisible on `vmbr0`) remains unverified on a real host
+- **v03.019.000 real-host check**: run on one PVE host; the deployed version was confirmed as 03.019.000 with `--version`. All four checks on menu item 1 matched: the sampling notice said "10 seconds", the RX/TX columns carried values, the three model lines under the table matched expectations, and the table did not degrade to the block layout. On that host the displayed RX/TX of two bonds matched the sum of their members, including a case where TX had grown; the Bond/Bridge/VLAN type classification was displayed correctly. **Not covered**: the note shown when bond and member sampling disagree. It was not triggered in that check (bond and members agreed), so its real output has not yet appeared on a real host and was verified only against a fake sysfs on Windows. Adjacent reads have run on a real host; this check adds no new information on the duration of the two read passes. A real host once showed bond0 TX with traffic while both member NICs showed none; it was not reproduced and the cause is unconfirmed. This version narrows the read gap and leaves numbers behind if the mismatch recurs; it does not guarantee the mismatch is gone, and it cannot show that the read gap was the cause. For menu items other than 1, this check adds no new verification; the statements above stand
+- **Added in v03.020.000:** v03.020.000 is **not deployed and has not been run on a real host**. The `-`/`unknown` display rule for the Speed and Duplex columns, the rename of menu 1's title, and the two new `--self-test` groups (NIC model; bond vs member sampling mismatch) were verified only on Windows, with unit tests, the self-test, and mutation testing (using a fake ethtool and fake sysfs); only `Unknown!` and `Unknown! (255)` have samples of how ethtool says "no value" across drivers, and any wording that does not start with `Unknown` is shown as-is.
+- **Added in v03.021.000 through v03.023.001:** v03.023.001 is **not deployed and has not been run on a real host**. The following were verified only on Windows, with unit tests and mutation testing (using a fake sysfs, fake config files and a fake `ip`): the Physical/Virtual zones of menu 1 with its bridge-relation sub-lines and guest NIC summary, and the VM/LXC split of menu 10 (v03.021.000); the two-part layout of menu 6 (virtual NIC information / guest information) (v03.022.000); hiding the `fwbr` guest pipeline bridges in menu 6 (v03.022.001); and the **Physical NIC** column in the virtual-interface table of menu 1 (added in v03.023.000, renamed in v03.023.001). The narrow-terminal behavior of that column was checked only against simulated widths.
 
 For the first run in your own environment: execute `--self-test` → inspect each menu item while comparing it with raw `ip` / `ethtool` output → schedule recurring reports only after the results are confirmed.
 
 ## Interpretation notes
 
 - **The note about bond and member sample mismatch**: when a bond and its member NICs disagree during the sample window — one side advanced and the other did not (RX and TX are judged separately) — an extra line appears below the table with the bond delta, the members' total delta and how long each of the two read passes took. Counters of different interfaces are not read at the same instant (a bond and its members are now read back to back to shrink the gap, but never simultaneously), so packets at the edge of the sample window may be counted on only one side. Both sides advancing by different amounts is normal on a busy bond and prints nothing.
+- **`-`, `unknown` and `N/A` in the Speed and Duplex columns:** `-` means the NIC is confirmed unwired and ethtool negotiated no value (previously ethtool's raw `Unknown!` / `Unknown! (255)` was shown); `unknown` means ethtool answered Unknown while the link is not "unwired" (wired, or the link state itself is unknown) — there `unknown` only relays ethtool's answer and is not a diagnosis; `N/A` means the ethtool query failed or the field is absent (always N/A for virtual interfaces). The Traditional Chinese interface shows `—`/`未知`/`N/A`. A real value from ethtool is shown as-is and is not hidden because of the link state.
 - **Media column:** Determination uses SFF-8472 structured fields in this priority order: `Port: Twisted Pair` → whether the connector is RJ45 or the type is BASE-T → copper and fibre cable-length fields → anchor words in the connector and cable-technology fields. The program does not keyword-scan the entire `ethtool -m` output because field names such as `Transceiver` and `Optical diagnostics support` would cause false positives for DAC.
 - A continuously increasing `carrier_changes` value may indicate link, module, or remote-port flapping.
 - Non-zero CRC errors normally point to a physical-layer issue.

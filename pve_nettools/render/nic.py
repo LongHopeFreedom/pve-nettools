@@ -11,9 +11,12 @@ from ..collect import ethtool as ethtool_collect
 # [CHANGE] 2026-10-06 v03.018.000：型號字串的組法在 collect/lspci.py，這裡只取用。
 from ..collect import lspci as lspci_collect
 # [CHANGE] 2026-08-25 探測略過成因：呈現層要對「已啟用」「被接管」「探測關閉」
-#          說不同的話，故取用具名常數而不是比對字串。
+#          說不同的話，故取用命名常數而不是比對字串。
 from ..collect.linkprobe import SKIP_DISABLED, SKIP_ENSLAVED
 from ..collect import bond as bond_collect
+# [CHANGE] 2026-10-08 v03.021.000：選單 1 分區（客體機介面不列、改摘要）所需。
+from ..collect.bridge import is_guest_iface, physical_uplinks
+from ..collect.pve import guest_nic_counts
 from ..collect.sysfs import (DEFAULT_SAMPLE_SECONDS, bond_traffic_conflicts,
                              sample_traffic)
 from ..i18n import t
@@ -24,7 +27,8 @@ from ..width import Table, pad
 from .base import DecoratedTable as _TrailingTable
 # [CHANGE] 2026-08-03 窄版標題改走共用 block_title，資料值則重用各 section 的
 #          colorizer，讓寬窄版不再各自維護顏色判準。
-from .base import DecoratedTable, Section, block_title, error, kv, note
+from .base import (DecoratedTable, Section, block_title, error, kv, note,
+                   subsection)
 
 __all__ = ["HealthSection", "NicSection", "link_state"]
 
@@ -49,6 +53,33 @@ def _result_value(result, key):
     if not result or result.get("status") != STATUS_OK:
         return t("app.na")
     return _value((result.get("data") or {}).get(key))
+
+
+# [CHANGE] 2026-10-07 v03.020.000：速率／Duplex 的三態顯示。
+def _is_unknown_token(value):
+    """ethtool 對「沒有協商出值」印的是 `Unknown!`（速率）與 `Unknown! (255)`（Duplex）。"""
+    return str(value).strip().lower().startswith("unknown")
+
+
+def _link_attr_value(result, key, link):
+    """速率／Duplex 欄：把 ethtool 的 `Unknown!` 依 Link 狀態換成誠實的字樣。
+
+    三態（前兩種為 2026-10-07 指定的顯示，其餘組合為實作時的保守選擇）：
+        N/A   查詢失敗或欄位不存在（維持原義）
+        —     確定未接線（link is False）且 ethtool 回 Unknown：沒有 link 就沒有
+              協商值，「不適用」；英文 `-`
+        未知  其餘 Unknown（已接線、或 Link 本身未知）：ethtool 說不出來
+    Link 本身未知（None）時採「未知」而不採「—」：「—」等於斷言未接線，
+    而手上沒有這個證據。
+    非 Unknown 的值（例如未接線卻有真值）原樣顯示，不因 Link 狀態隱藏證據。
+    """
+    usable = bool(result) and result.get("status") == STATUS_OK
+    value = (result.get("data") or {}).get(key) if usable else None
+    if value is None:
+        return t("app.na")
+    if _is_unknown_token(value):
+        return t("app.dash") if link is False else t("app.unknown")
+    return str(value)
 
 
 def _medium_text(result):
@@ -301,6 +332,52 @@ def _conflict_notes(data, ctx):
     return lines
 
 
+# [CHANGE] 2026-10-08 v03.021.000：選單 1 分區與橋接關係副列。
+#
+# 橋接關係放 row["relation"]，**不放進 cells**（理由同型號列：HEADERS 維持 11 欄，
+#   2026-08-02 決定，13 欄曾使整張表降級成區塊）。
+#   row 沒有 "relation" 鍵（舊版建構、報告）或為 None ＝ 不顯示副列。
+ZONE_PHYSICAL = "physical"
+ZONE_VIRTUAL = "virtual"
+REL_BELONGS = "belongs"
+REL_MEMBERS = "members"
+
+
+def _relation_text(relation):
+    """("belongs", master) → 「屬於 vmbr0」；("members", [..]) → 「成員：a, b」（空＝破折號）。"""
+    kind, value = relation
+    if kind == REL_BELONGS:
+        return t("nic.rel_belongs", master=value)
+    return t("nic.rel_members", members=_join(value) if value else t("app.dash"))
+
+
+def _relation_lines(rows):
+    """表格版的橋接副列：每個有關係的介面一行，順序依列順序。"""
+    return [t("nic.rel_line", nic=row["cells"][0],
+              relation=_relation_text(row["relation"]))
+            for row in rows if row.get("relation") is not None]
+
+
+# [CHANGE] 2026-10-08 v03.023.000：虛擬介面表的「實體網卡」。
+#
+# 只在互動畫面（zoned=True）的虛擬介面列上有 row["uplinks"]（實體網卡名稱清單，可為空）；
+# 沒有這個鍵（實體卡、舊版建構、完整報告）一律不顯示。欄位插在「媒介」之後；HEADERS 與
+# row["cells"] 維持 11 欄，加欄只發生在畫面組表的那一刻。
+UPLINK_COLUMN_INDEX = 7      # 插在媒介（索引 6）之後
+UPLINK_SEP = ", "
+
+
+def _uplink_text(names):
+    return UPLINK_SEP.join(names) if names else t("app.dash")
+
+
+def _uplink_lines(rows):
+    """十一欄表格版的表下行：放不下新欄時，把同一份資訊放在表下。"""
+    return [t("nic.uplink_line", nic=row["cells"][0],
+              uplinks=_uplink_text(row["uplinks"]))
+            for row in rows if row.get("uplinks") is not None]
+
+
 def _pair(left_key, left_value, right_key, right_value, key_width=8):
     """組成兩組鍵值；只有左值補白，行尾右值不補白。"""
     # [CHANGE] 2026-08-02 分隔符改走 i18n（見 i18n.py 的 app.kv_sep）。
@@ -335,7 +412,8 @@ class NicSection(Section):
     def __init__(self, sysfs_reader, ethtool_reader,
                  sample_seconds=DEFAULT_SAMPLE_SECONDS, sleep_fn=None,
                  traffic=None, prober=None, lspci_reader=None,
-                 bond_reader=None, clock=None):
+                 bond_reader=None, clock=None, guest_reader=None, zoned=False,
+                 ip_reader=None):
         self.sysfs = sysfs_reader
         self.ethtool = ethtool_reader
         # [CHANGE] 2026-10-06 v03.018.000：lspci_reader 為 None ⇒ 不查、不顯示型號列，
@@ -349,10 +427,24 @@ class NicSection(Section):
         self.sleep_fn = sleep_fn
         self.traffic = traffic
         self.prober = prober
+        # [CHANGE] 2026-10-08 v03.021.000：zoned=True ＝ 選單 1 的「實體／虛擬」分區版面：
+        #          客體機介面（tap／veth／fwbr／fwpr／fwln）不列，改在表下加一行摘要；
+        #          橋接關係以副列呈現。預設 False ＝ 與舊版逐位元相同（完整報告走預設，
+        #          已決定這一版報告輸出不動）。guest_reader 只供摘要行使用。
+        self.guest = guest_reader
+        self.zoned = zoned
+        # [CHANGE] 2026-10-08 v03.023.000：ip_reader 只供 VLAN 子介面查底層介面；
+        #          為 None ⇒ VLAN 的「實體網卡」顯示破折號，其餘不受影響。
+        self.ip = ip_reader
 
     def build(self):
         # [CHANGE] 2026-08-27 母體擴為 traffic_nics()：納入 bond／vmbr／VLAN。
         nics = self.sysfs.traffic_nics()
+        # [CHANGE] 2026-10-08 v03.021.000：顯示層過濾，**只動 nics（顯示與取樣母體）**。
+        # 下方探測母體仍是 physical_nics()，與此處過濾無關——兩者不得合併
+        #    （理由見下方 probe 註解：探測會把介面 admin-up）。
+        if self.zoned:
+            nics = self._without_guest_ifaces(nics)
         # [CHANGE] 2026-08-25 探測必須排在流量取樣**之前**。
         #
         # 順序在這裡有語意：取樣是「等 N 秒看計數器有沒有動」，而探測會把卡
@@ -391,7 +483,59 @@ class NicSection(Section):
             row["traffic_conflicts"].append(
                 dict(conflict, first=timing.get("first"),
                      second=timing.get("second")))
+        if self.zoned:
+            self._annotate_zones(rows, nics)
         return rows
+
+    # [CHANGE] 2026-10-08 v03.021.000 新增：分區版面用的過濾與標註。
+    def _without_guest_ifaces(self, nics):
+        """濾掉 PVE 客體機介面。有 device 連結者（實體卡）一律保留，不以名稱排除。"""
+        physical = set(self.sysfs.physical_nics())
+        return [nic for nic in nics
+                if nic in physical or not is_guest_iface(nic)]
+
+    def _annotate_zones(self, rows, nics):
+        """在每列加上 zone 與 relation（皆不進 cells）。
+
+        區的歸屬與 _row 的分流用同一個判準（interface_type ∈ VIRTUAL_MEDIA_KEYS），
+        所以 bond 即使有 device 連結也歸虛擬區。
+        """
+        for row, iface in zip(rows, nics):
+            kind = self.sysfs.interface_type(iface)
+            virtual = kind in self.VIRTUAL_MEDIA_KEYS
+            row["zone"] = ZONE_VIRTUAL if virtual else ZONE_PHYSICAL
+            # [CHANGE] 2026-10-08 v03.023.000：只有虛擬區的列帶 uplinks（實體區不加欄）。
+            if virtual:
+                row["uplinks"] = self._uplink_names(iface)
+            if kind == "bridge":
+                members = [port for port in self.sysfs.bridge_ports(iface)
+                           if not is_guest_iface(port)]
+                row["relation"] = (REL_MEMBERS, members)
+                continue
+            master = self.sysfs.master(iface)
+            row["relation"] = (REL_BELONGS, master) if master else None
+
+    # [CHANGE] 2026-10-08 v03.023.000 新增：虛擬介面往下解到實體網卡。
+    def _uplink_names(self, iface):
+        """回實體網卡名稱清單；解不到回 []。拓撲查詢全沿用既有讀取器，不新增收集。"""
+        return physical_uplinks(iface, self.sysfs.interface_type,
+                                self._lower_ifaces)
+
+    def _lower_ifaces(self, name, kind):
+        """下一層介面：橋接的成員、bond 的成員、VLAN 的底層；讀不到一律回空。"""
+        if kind == "bridge":
+            return self.sysfs.bridge_ports(name)
+        if kind == "bond":
+            if self.bond is None:
+                return []
+            result = self.bond.read(name)
+            if result.get("status") != STATUS_OK:
+                return []
+            return bond_collect.slave_names(result.get("data"))
+        if kind == "vlan":
+            parent = self.ip.vlan_parent(name) if self.ip is not None else None
+            return [parent] if parent else []
+        return []
 
     # [CHANGE] 2026-10-06 v03.019.000 新增：bond 的成員名單，沿用選單 8 的 BondReader。
     def _bond_members(self, nics):
@@ -457,8 +601,8 @@ class NicSection(Section):
         return {
             "cells": [
                 iface, _value(self.sysfs.mac(iface)), link_text,
-                _result_value(link_info, "speed"),
-                _result_value(link_info, "duplex"),
+                _link_attr_value(link_info, "speed", link),
+                _link_attr_value(link_info, "duplex", link),
                 _value(self.sysfs.mtu(iface)),
                 _medium_text(self.ethtool.medium(iface)),
                 _traffic_text(rx_active, delta[0]),
@@ -467,7 +611,7 @@ class NicSection(Section):
                 _result_value(driver_info, "bus_info"),
             ],
             "link": link,
-            # [CHANGE] 2026-08-25 整份探測結果留在列上，供 _probe_notes 具名
+            # [CHANGE] 2026-08-25 整份探測結果留在列上，供 _probe_notes 逐張點名
             #          揭露。只留 link 是不夠的：「還原失敗」與「權限不足」
             #          在 link 這一欄的投影完全相同（都是 None），把結構壓成
             #          一個三態值就等於把那兩件事的差別丟掉。
@@ -509,7 +653,7 @@ class NicSection(Section):
           的** Speed（現場常見 10000Mb/s），`ethtool bond0` 回的則是 slave 的
           聚合值——兩者都是「看起來像真的、語意卻不同」的數字，一旦進了表格
           就是一句沒有證據的斷言。
-          N/A 說的是「我沒有這個資訊」，虛構的數字說的是「我知道，是這
+          N/A 表示「沒有這個資訊」，虛構的數字卻宣稱「知道，就是這
             個」。兩者在畫面上都只佔一格，但只有一個是誠實的。
         附帶效果同樣重要：不查就不會產生 ethtool 失敗成因。否則每一個虛擬
           介面都各貢獻一句警示，把實體卡真正的警示淹掉——PVE 上 vmbr 加 VLAN
@@ -598,7 +742,7 @@ class NicSection(Section):
                                 fields=_scope_text(affected)), ctx.palette))
         # [CHANGE] 2026-10-06 v03.018.000：型號取不到的成因（每種一句）。
         lines.extend(_model_notes(data, ctx))
-        # [CHANGE] 2026-08-25 探測的具名揭露排在流量說明之前——它講的是「我們對
+        # [CHANGE] 2026-08-25 探測的點名說明排在流量說明之前——它講的是「本工具對
         #          這台主機做了什麼」，比「這個欄位怎麼讀」優先。
         lines.extend(self._probe_notes(data, ctx))
         lines.extend(_conflict_notes(data, ctx))
@@ -606,15 +750,15 @@ class NicSection(Section):
                           ctx.palette))
         return lines
 
-    # [CHANGE] 2026-08-25 新增：Link 探測的具名揭露。
+    # [CHANGE] 2026-08-25 新增：Link 探測的點名說明。
     def _probe_notes(self, data, ctx):
         """把探測做過什麼、有沒有做成、有沒有還原乾淨，逐項說出來。
 
         這幾句不得省。探測是本工具**唯一**會改變主機狀態的動作，
-          使用者有權知道我們動了哪幾張卡。
+          使用者有權知道本工具動了哪幾張卡。
 
-        還原失敗必須**逐張具名**。只說「部分網卡還原失敗」等於沒說——
-          使用者無從得知要去把哪一張關回去，而那張卡此刻正處於我們留下的啟用
+        還原失敗必須**逐張點名**。只說「部分網卡還原失敗」等於沒說——
+          使用者無從得知要去把哪一張關回去，而那張卡此刻正處於本工具留下的啟用
           狀態。這與本檔上方 ethtool 成因分流的立論相同：彙總數字底下不同質。
 
         每一種成因各自一個 if 而非 elif：多張網卡的成因可以不同，一台主機上
@@ -664,6 +808,9 @@ class NicSection(Section):
         return table
 
     def blocks(self, data, ctx):
+        return self._block_lines(data, ctx) + self._notes(data, ctx)
+
+    def _block_lines(self, data, ctx):
         lines = []
         paint = self.colorizer(data, ctx)
         for row_index, row in enumerate(data):
@@ -684,8 +831,16 @@ class NicSection(Section):
             # [CHANGE] 2026-10-06 v03.018.000：只有實體卡有型號，虛擬介面不加這行。
             if row.get("model") is not None:
                 lines.append(kv(t("nic.model"), row["model"], key_width=8))
+            # [CHANGE] 2026-10-08 v03.023.000：虛擬介面的實體網卡（區塊版）。
+            if row.get("uplinks") is not None:
+                lines.append(kv(t("nic.uplinks"), _uplink_text(row["uplinks"]),
+                                key_width=8))
+            # [CHANGE] 2026-10-08 v03.021.000：橋接關係副列（區塊版）。
+            if row.get("relation") is not None:
+                lines.append(kv(t("nic.relation"),
+                                _relation_text(row["relation"]), key_width=8))
             lines.append("")
-        return lines + self._notes(data, ctx)
+        return lines
 
     def colorizer(self, data, ctx):
         def paint(row_index, col_index, text):
@@ -702,6 +857,90 @@ class NicSection(Section):
 
     def empty_lines(self, data, ctx):
         return [error(t("nic.none_found"), ctx.palette)]
+
+    # [CHANGE] 2026-10-08 v03.021.000 新增：分區版面。
+    def render(self, ctx):
+        if not self.zoned:
+            return Section.render(self, ctx)
+        data = self.build()
+        if self.is_empty(data):
+            return self.empty_lines(data, ctx)
+        physical = [row for row in data if row["zone"] == ZONE_PHYSICAL]
+        virtual = [row for row in data if row["zone"] == ZONE_VIRTUAL]
+        lines = subsection(t("nic.zone_physical"), ctx.palette)
+        lines.extend(self._zone_lines(
+            physical, ctx, error(t("nic.none_found"), ctx.palette)))
+        lines.append("")
+        lines.extend(subsection(t("nic.zone_virtual"), ctx.palette))
+        lines.extend(self._zone_lines(
+            virtual, ctx, note(t("nic.zone_virtual_none"), ctx.palette)))
+        summary = self._guest_summary(ctx)
+        if summary:
+            lines.extend([""] + summary)
+        return lines + self._notes(data, ctx)
+
+    def _zone_lines(self, rows, ctx, empty_line):
+        """一個區的表格（放不下則逐張區塊）；型號列與橋接副列接在表下。"""
+        if not rows:
+            return [empty_line]
+        trailing = _model_lines(rows) + _relation_lines(rows)
+        # [CHANGE] 2026-10-08 v03.023.000：虛擬介面區先試十二欄（媒介後加「實體網卡」）；
+        #          放不下就退回原本的十一欄表，並把同一份資訊放到表下；再放不下才走區塊版。
+        #          退回的十一欄表與施作前逐欄相同，所以原本放得下的寬度不會因加欄而降級。
+        has_uplinks = any(row.get("uplinks") is not None for row in rows)
+        if has_uplinks:
+            wide = self._uplink_table(rows, trailing)
+            if ctx.fits(wide.total_width()):
+                return wide.render(self._uplink_colorizer(rows, ctx))
+        table = DecoratedTable(
+            [t(key) for key in self.HEADERS],
+            trailing=trailing + (_uplink_lines(rows) if has_uplinks else []))
+        for row in rows:
+            table.add(row["cells"])
+        if ctx.fits(table.total_width()):
+            return table.render(self.colorizer(rows, ctx))
+        # 區塊版每張卡後面都有一行空白；區與區之間的空白由呼叫端加，這裡去掉最後那一行。
+        return self._block_lines(rows, ctx)[:-1]
+
+    def _uplink_table(self, rows, trailing):
+        """十二欄版：在「媒介」之後插入「實體網卡」。"""
+        headers = [t(key) for key in self.HEADERS]
+        headers.insert(UPLINK_COLUMN_INDEX, t("nic.uplinks"))
+        table = DecoratedTable(headers, trailing=trailing)
+        for row in rows:
+            cells = list(row["cells"])
+            cells.insert(UPLINK_COLUMN_INDEX, _uplink_text(row["uplinks"]))
+            table.add(cells)
+        return table
+
+    def _uplink_colorizer(self, rows, ctx):
+        """欄位插入後，原有欄的著色索引要往回對；新欄本身不著色。"""
+        paint = self.colorizer(rows, ctx)
+
+        def shifted(row_index, col_index, text):
+            if col_index == UPLINK_COLUMN_INDEX:
+                return text
+            if col_index > UPLINK_COLUMN_INDEX:
+                col_index -= 1
+            return paint(row_index, col_index, text)
+        return shifted
+
+    def _guest_summary(self, ctx):
+        """「客體網卡 N 個（執行中 M 個）」；N／M 的口徑同「VM/CT 網卡對應」選單。
+
+        讀不到設定檔時**明說**，不印「0 個」：0 與「沒讀到」在畫面上同形。
+        """
+        if self.guest is None:
+            return []
+        result = self.guest.nics()
+        if result.get("status") == STATUS_UNAVAILABLE:
+            return [note(t("nic.guest_summary_unavailable"), ctx.palette)]
+        total, running = guest_nic_counts(result.get("nics"), self.sysfs.exists)
+        text = t("nic.guest_summary", total=total, running=running)
+        unreadable = len(result.get("unreadable") or [])
+        if unreadable:
+            text += t("nic.guest_summary_unreadable", count=unreadable)
+        return [text]
 
 
 class HealthSection(Section):

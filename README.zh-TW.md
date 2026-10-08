@@ -2,7 +2,7 @@
 
 # pve-nettools
 
-Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.019.000**。
+Proxmox VE 網路盤查工具。Python 重寫版的進入點為無副檔名、以 shebang 執行的 `pve-network-audit`，版本為 **v03.023.001**。
 
 儲存庫：`github.com/LongHopeFreedom/pve-nettools`
 
@@ -66,12 +66,12 @@ sudo ./pve-network-audit
 | # | 群組 | 項目 | 內容 |
 |---|---|---|---|
 | 0 | — | 離開 | 結束程式 |
-| 1 | phys | 網卡與虛擬介面狀態 | MAC、Link、速率、Duplex、MTU、媒介／類型、RX/TX、驅動、PCI 位址，另在表下列出實體網卡的**型號**（取自 `lspci`；虛擬介面不列）。**v03.016.000 起納入 bond／vmbr／VLAN**：虛擬介面的種類（Bond 聚合／Bridge 橋接／VLAN 子介面）顯示在媒介那一欄。這類介面**不查 ethtool**，故速率、Duplex、驅動、PCI 位址這四欄一律顯示 N/A——`ethtool` 對純軟體的 bridge 會回一個虛構的速率，標成未知數才誠實 |
+| 1 | phys | 網卡與虛擬介面狀態（含 RX/TX） | MAC、Link、速率、Duplex、MTU、媒介／類型、RX/TX、驅動、PCI 位址，另在表下列出實體網卡的**型號**（取自 `lspci`；虛擬介面不列）。互動畫面的虛擬介面表（bond、bridge、VLAN）另有一欄**實體網卡**，列出該介面最終接到的實體網卡（例：`vmbr0` → `enp6s0`；解不到顯示「—」；多張以「, 」串接）；終端太窄時，同一份資訊改放表下，每個介面一行。完整報告不受影響。*本欄在此公開版尚未在真機驗證。* **v03.016.000 起納入 bond／vmbr／VLAN**：虛擬介面的種類（Bond 聚合／Bridge 橋接／VLAN 子介面）顯示在媒介那一欄。這類介面**不查 ethtool**，故速率、Duplex、驅動、PCI 位址這四欄一律顯示 N/A——`ethtool` 對純軟體的 bridge 會回一個虛構的速率，標成未知數才誠實 |
 | 2 | phys | 網卡健康 | carrier_changes（線路抖動）、RX/TX 錯誤與丟包、CRC 錯誤、自動協商、NUMA、韌體版本 |
 | 3 | phys | SFP/QSFP 模組明細 | 廠商、料號、序號、接頭、模組型別、溫度、電壓、光收發功率 |
 | 4 | phys | 網卡 LED 定位 | `ethtool -p`，用於機房現場找線 |
 | 5 | l2 | Bond | 模式、成員、Active Slave、Hash Policy、LACP Rate、Minimum Links、逐成員狀態 |
-| 6 | l2 | Linux Bridge | 綁定 Port、VLAN-aware、vlan_protocol、default_pvid、STP、MTU、IPv4/v6 |
+| 6 | l2 | Linux Bridge | 綁定 Port、VLAN-aware、vlan_protocol、default_pvid、STP、MTU、IPv4/v6。互動畫面中每座橋接分上下兩段：上段為虛擬網卡資訊（橋接本身與非客體機成員），下段為掛在這座橋接上的客體機，分 VM 區與 LXC 區。PVE 為開防火牆的客體機網卡所建的管線橋接（`fwbr…`）在互動畫面隱藏，並註明被隱藏的座數；完整報告（`--report`、選單 19）不受影響，仍會列出。*上下兩段版面與 `fwbr` 隱藏在此公開版尚未在真機驗證。* |
 | 7 | l2 | Open vSwitch | OVS Bridge / Port / VLAN Tag / 成員介面 / Bond 狀態 |
 | 8 | l2 | VLAN 子介面 | VLAN ID、上層介面與其型別、MTU、狀態、IPv4 |
 | 9 | l2 | Bridge VLAN Filter | 逐 Port 放行清單，含 PVID 與 Untagged/Tagged 標記 |
@@ -99,10 +99,11 @@ sudo ./pve-network-audit
 | 必要 | `iproute2`（`ip`、`bridge`） | 相關章節顯示提示並略過 |
 | 建議 | `ethtool` | 速率／Duplex／韌體／LED 顯示 N/A，媒介顯示「未知」 |
 | 建議 | `lldpd` | 無法查詢交換器與 Port |
+| 建議 | `pciutils`（`lspci`） | 選單 1 的網卡型號顯示 N/A，並印一句說明 |
 | 選用 | `openvswitch-switch` | 僅 OVS 環境需要 |
 
 ```bash
-apt update && apt install -y ethtool lldpd
+apt update && apt install -y ethtool lldpd pciutils
 systemctl enable --now lldpd
 ```
 
@@ -160,13 +161,23 @@ install -d -m 0700 /var/log/pve-audit
 
 ## 內建自檢
 
-`--self-test` 只涵蓋下列五個群組；實際檢查總數以該次指令輸出為準：
+`--self-test` 目前執行 13 個群組、共 72 項（v03.020.000，於 `pve_nettools` 套件目錄執行 `python -m pve_nettools --self-test` 實測）；實際檢查總數以該次指令輸出為準：
 
-- `group_width`：ASCII、CJK、混合字元寬度，以及填補與截斷。
-- `group_vlan`：VLAN 展開、空清單、往返轉換與包含判定。
-- `group_guest`：Guest 欄位、鍵值、MAC 格式及錯誤 MAC 判定。
-- `group_netconf`：網路設定的接合、stanza、註解、空白與 `auto` 判定。
-- `group_i18n`：翻譯差異、空值與支援語言判定。
+- 顯示寬度計算：ASCII、CJK、混合字元寬度，以及填補與截斷。
+- VLAN 清單展開與壓縮：展開、空清單、往返轉換與包含判定。
+- VM/CT 網卡設定解析：Guest 欄位、鍵值、MAC 格式及錯誤 MAC 判定。
+- 介面設定檔解析：接合、stanza、註解、空白與 `auto` 判定。
+- 雙語訊息表對齊：翻譯差異、空值與支援語言判定。
+- sysfs 讀取失敗與空值處理。
+- 網路媒介語意欄位判定。
+- `bridge vlan show` 縮排輸出解析。
+- `ethtool` 指令快取（實際呼叫次數）。
+- 清單截斷揭露。
+- 報告檔建立權限。
+- 網卡型號（`lspci`）解析與缺 `lspci` 處理。
+- bond 與成員取樣矛盾判定。
+
+自檢只涵蓋上列純函式與小型已知答案，不執行各區段的完整呈現，也不讀取真實系統。
 
 每次改動判定邏輯後應先執行自檢；傳回碼非 0 代表有判定失敗。
 
@@ -185,17 +196,20 @@ install -d -m 0700 /var/log/pve-audit
 
 **未涵蓋**（那台主機沒有這些設備，或沒有進入這些狀態）：
 
-- **Bond**、**SFP/QSFP 模組**、**VLAN 子介面**：主機上都沒有，因此只驗到「正確顯示沒有資料」，沒有驗到有資料時的呈現是否正確
+- **Bond**、**SFP/QSFP 模組**、**VLAN 子介面**：主機上都沒有，因此只驗到「正確顯示沒有資料」，沒有驗到有資料時的呈現是否正確（指 2026-08-03 驗證的那一台；之後在真機上對 bond 的觀察見下方 v03.016.000 與 v03.019.000 兩項）
 - **ethtool 查詢失敗時的訊息**：三道 ethtool 查詢全部成功，四句成因訊息與「以下欄位將顯示 N/A」那一行都沒有機會出現
 - **多節點叢集**與**多張實體網卡**的情境
-- **v03.016.000 新增的 bond／vmbr／VLAN 流量列**：驗證幾乎全部以假 sysfs 在 Windows 完成。三件只有真機能證的事裡，只有一件有真機佐證：bond 計數器是否為成員加總——2026-10-06 在一台 Proxmox VE 真機（一組 bond、兩張成員網卡）直接讀 `statistics` 計數器，相隔 3 秒讀兩次：兩張成員的 RX 各增加 180、238，bond 的 RX 增加 418；三者的 TX 增量皆為 0；兩次讀值中 bond 都等於兩張成員相加。限度：只有一台主機、一組 bond，bond 模式未記錄，TX 在該次觀察中沒有增量（TX 的增量加總關係未被觀察到）。另外兩件仍未在真機驗證：`DEVTYPE` 的實際值、bridge 是否確實不計內部 port 之間的轉發（⇒ VM ↔ VM 的流量在 `vmbr0` 上看不到）
-- **v03.019.000 新增的 bond 與成員取樣行為**（相鄰讀取、兩輪讀取耗時、取樣結果不一致的說明列）：只在 Windows 以假 sysfs 驗證過，**未在真機執行**。真機上曾出現一次「bond0 TX 有流量、兩張成員 TX 皆無流量」，沒有重現，成因未證實；本版縮小讀取時間差並在矛盾再出現時留下數字，不保證消除，也不能由此證明時間差就是成因
+- **v03.016.000 新增的 bond／vmbr／VLAN 流量列**：驗證幾乎全部以假 sysfs 在 Windows 完成。三件只有真機能證的事裡，只有一件有真機佐證：bond 計數器是否為成員加總——2026-10-06 在一台 Proxmox VE 真機（一組 bond、兩張成員網卡）直接讀 `statistics` 計數器，相隔 3 秒讀兩次：兩張成員的 RX 各增加 180、238，bond 的 RX 增加 418；三者的 TX 增量皆為 0；兩次讀值中 bond 都等於兩張成員相加。限度：只有一台主機、一組 bond，bond 模式未記錄，TX 在該次觀察中沒有增量（TX 的增量加總關係未在這次直接讀計數器的觀察中出現；v03.019.000 真機驗收中 TX 有增量的情形，顯示值與成員加總相符，見下一項）。另外兩件：`DEVTYPE` 的實際值未另行記錄（v03.019.000 真機驗收中 Bond／Bridge／VLAN 的類型分類顯示正確）；bridge 是否確實不計內部 port 之間的轉發（⇒ VM ↔ VM 的流量在 `vmbr0` 上看不到）仍未在真機驗證
+- **v03.019.000 真機驗收**：在一台 PVE 真機上執行，部署版本以 `--version` 確認為 03.019.000。選單第 1 項四項驗收皆符合：取樣提示為「10 秒」、RX／TX 欄有數值、表格下方型號三行與預期相符、表格未降級成區塊版。該機兩組 bond 的 RX／TX 顯示值與成員加總相符，含 TX 有增量的情形；Bond／Bridge／VLAN 的類型分類顯示正確。**未涵蓋**：bond 與成員取樣結果不一致的說明列——該次驗收沒有觸發（bond 與成員一致），實際輸出尚未在真機出現過，只在 Windows 以假 sysfs 驗證過；相鄰讀取已在真機執行過，兩輪讀取耗時本次沒有新資訊。真機上曾出現一次「bond0 TX 有流量、兩張成員 TX 皆無流量」，沒有重現，成因未證實；本版縮小讀取時間差並在矛盾再出現時留下數字，不保證消除，也不能由此證明時間差就是成因。選單第 1 項以外各項在真機的執行狀況，這次驗收沒有新增驗證，沿用上列敘述
+- **v03.020.000 追加**：v03.020.000 **尚未部署，未在真機執行**。速率／Duplex 欄的 `—`／`未知` 顯示規則、選單 1 標題更名，以及 `--self-test` 新增的「網卡型號」與「bond 與成員取樣矛盾」兩組檢查，只在 Windows 以單元測試、自檢與突變測試驗證（使用假 ethtool／假 sysfs）；ethtool 在各種驅動上實際用什麼字樣表示「沒有值」，只有 `Unknown!`／`Unknown! (255)` 兩種有樣本，其餘字樣若不以 `Unknown` 起頭會原樣顯示。
+- **v03.021.000 至 v03.023.001 追加**：v03.023.001 **尚未部署，未在真機執行**。以下只在 Windows 以單元測試與突變測試驗證（使用假 sysfs、假設定檔與假 `ip`）：選單 1 的「實體／虛擬」分區與橋接關係副列、客體網卡摘要，以及選單 10 的 VM／LXC 分區（v03.021.000）；選單 6 的上下兩段版面（虛擬網卡資訊／客體機資訊）（v03.022.000）；選單 6 隱藏 `fwbr` 客體機管線橋接（v03.022.001）；選單 1 虛擬介面表的**實體網卡**欄（v03.023.000 新增，v03.023.001 更名）。該欄在窄終端的表現只以模擬寬度檢查。
 
 首次在自己的環境執行時，仍請依序：`--self-test` → 在選單逐項檢視並與原始 `ip` / `ethtool` 輸出比較 → 確認無誤後才排進定期巡檢。
 
 ## 判讀提示
 
 - **bond 與成員取樣結果不一致的說明列**：bond 與它的成員網卡在取樣窗內一邊有流量、另一邊沒有時，表格下方會多一行說明（RX、TX 分開判斷），列出 bond 差值、成員差值合計與兩輪讀取各自的耗時。各介面計數器不是同一瞬間讀取（bond 與其成員已改為相鄰讀取以縮小時間差，但不可能同時），取樣窗邊界上的封包可能只算進其中一邊。兩邊都有流量但數字不相等是忙碌 bond 的常態，不會出現這一行。
+- **速率／Duplex 欄的 `—`、`未知` 與 `N/A`**：`—` 表示該卡確定未接線，ethtool 沒有協商出值（原本直接顯示 ethtool 的 `Unknown!`／`Unknown! (255)`）；`未知` 表示 ethtool 回了 Unknown，但 Link 不是「未接線」（已接線，或 Link 本身未知）——這時 `未知` 只是轉述 ethtool 的答案，不是診斷；`N/A` 表示 ethtool 查詢失敗或沒有該欄位（虛擬介面一律 N/A）。英文介面對應為 `-`／`unknown`／`N/A`。ethtool 回報真值時原樣顯示，不因 Link 狀態隱藏。
 - **媒介欄**：依 SFF-8472 的結構化欄位判定，優先序為 `Port: Twisted Pair` → 接頭是否為 RJ45／類型是否為 BASE-T → 銅纜與光纖線長欄位 → 接頭與線纜技術的錨定詞。程式不會對整份 `ethtool -m` 輸出做關鍵字掃描，因為 `Transceiver`、`Optical diagnostics support` 等欄位名會導致 DAC 假陽性。
 - **Link 變動（carrier_changes）**：持續增加可能表示線路、模組或對端 Port 抖動。
 - **CRC 錯誤**：非 0 通常指向線材、模組或對端 Port 等實體層問題。

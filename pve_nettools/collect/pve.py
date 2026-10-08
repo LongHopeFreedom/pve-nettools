@@ -223,6 +223,19 @@ def vlan_tag_key(tag):
     return (0, int(text), "") if _DIGITS_RE.match(text) else (1, 0, text)
 
 
+# [CHANGE] 2026-10-08 v03.021.000：選單 1 的「客體網卡 N 個（執行中 M 個）」摘要。
+# N／M 的口徑與「VM/CT 網卡對應」選單逐列相同（同一份 nics、同一個「host-side 介面
+#   存在」判準），所以摘要的 N 必然等於該選單的列數；抽成一個函式是為了讓兩處不各算一份。
+def guest_nic_counts(nics, exists):
+    """回 (設定檔網卡數, 其中 host-side 介面存在者數)。
+
+    exists 為 callable（介面名 → bool），由呼叫端提供（SysfsReader.exists），
+    這個模組不碰 sysfs 路徑。
+    """
+    nics = list(nics or [])
+    return len(nics), sum(1 for nic in nics if exists(nic.get("iface")))
+
+
 # ── 檔案來源 ──────────────────────────────────────────────────────────
 
 

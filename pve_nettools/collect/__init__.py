@@ -41,7 +41,7 @@ STATUS_UNAVAILABLE = "unavailable"
 FAILURE_NOT_EXECUTABLE = "not_executable"
 FAILURE_EXIT_CODE = "exit_code"
 # [CHANGE] 2026-08-03：舊 fake 或其他上游可能沒交代 unavailable 的成因；
-#          用具名值讓呼叫端能採取不誤稱「未安裝」的保守訊息。
+#          用專屬的值讓呼叫端能採取不誤稱「未安裝」的保守訊息。
 # [CHANGE] 2026-08-03：run_command() 現在也會**自己**回這個值——子行程層級
 #          的例外（subprocess.SubprocessError，含 TimeoutExpired）代表「指令已經
 #          啟動過，是執行過程出的事」，與「這支指令跑不起來」是兩件事。原文寫

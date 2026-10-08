@@ -28,7 +28,7 @@ import re
 from . import (STATUS_EMPTY, STATUS_OK, STATUS_UNAVAILABLE, default_run,
                run_command)
 # [CHANGE] 2026-08-02 排序鍵取用 sysfs 的既有實作，不自己再寫一份。
-# 我第一版真的另寫了一份（re.split 版），而它與 sysfs 版**行為不同**：混合型別
+# 第一版真的另寫了一份（re.split 版），而它與 sysfs 版**行為不同**：混合型別
 #   的 tuple 在某些名稱組合下會拋 TypeError。同一個概念的第二份實作不只是重複，
 #   它還可能是錯的——而排序錯了畫面上只是順序不同，沒有任何東西會變紅。
 #   render/netconf.py 早已這樣跨模組取用，本檔照辦。
@@ -67,7 +67,7 @@ def parse_neigh(text, states=NEIGH_STATES):
       成 `stale0` 就混進來——形態列舉（找這串字）與性質（這一欄是狀態）在這裡會
       給出不同答案。
 
-    **這是與 bash 的具名差異，不是等價實作。** bash 的 `grep -E` 是子字串比對，
+    **這是與 bash 的已知差異，不是等價實作。** bash 的 `grep -E` 是子字串比對，
       而 `REACHABLE` **是 `UNREACHABLE` 的子字串** ⇒ bash 會把 UNREACHABLE 的鄰居
       也收進表裡。那與它自己在同一頁印出來的兩句話相矛盾：小標題寫「僅列 REACHABLE
       與 STALE」，註腳寫「本表已先濾掉 FAILED / INCOMPLETE 等狀態」。
@@ -205,7 +205,7 @@ class IpReader(object):
         判準是「跑不跑得起來」而不是「有沒有輸出」——`ip -o link show` 在
           只有 lo 的極端環境仍會有輸出，但真正要問的是 iproute2 裝了沒有。
         """
-        # [CHANGE] 2026-08-02 原本寫成裸字串 "unavailable"（我自己也犯了同一條）。
+        # [CHANGE] 2026-08-02 原本寫成裸字串 "unavailable"（當時的寫法也犯了同一條）。
         return (self._command(["ip", "-o", "link", "show"])["status"]
                 != STATUS_UNAVAILABLE)
 
